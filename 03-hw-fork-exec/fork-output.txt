@@ -1,4 +1,1 @@
 BEFORE FORK (5)
-SECTION C (5)
-SECTION B (5)
-foobar
