@@ -112,63 +112,30 @@ int main(int argc, char **argv) {
 */
 void eval(char *cmdline) {
     char *argv[MAXARGS];
-    int args = parseline(cmdline, argv);
+    int bg, args, status;
+    pid_t pid;
 
+    bg = parseline(cmdline, argv);
     if (argv[0] == NULL) {
         return;   /* ignore empty lines */
     }
 
-    // Check if it is a built-in command
-    if (builtin_cmd(argv)) {
-        return;
-    }
-
-    // Fork a child process
-    pid_t pid;
-    if ((pid = fork()) == 0) {
-        // Child process
-
-        // Check for input and output redirection
-        int num_cmds = 1; // Only one command, no pipes
-        int stdin_redir[num_cmds], stdout_redir[num_cmds];
-
-        if (parseargs(argv, NULL, stdin_redir, stdout_redir) > 0) {
-            // Input redirection
-            if (stdin_redir[0] >= 0) {
-                int stdin_fd = open(argv[stdin_redir[0]], O_RDONLY);
-                if (stdin_fd < 0) {
-                    perror("Input redirection failed");
-                    exit(1);
-                }
-                dup2(stdin_fd, 0);
-                close(stdin_fd);
-            }
-
-            // Output redirection
-            if (stdout_redir[0] >= 0) {
-                int stdout_fd = open(argv[stdout_redir[0]], O_WRONLY | O_CREAT | O_TRUNC, 0600);
-                if (stdout_fd < 0) {
-                    perror("Output redirection failed");
-                    exit(1);
-                }
-                dup2(stdout_fd, 1);
-                close(stdout_fd);
+    if (!builtin_cmd(argv)) {
+        if ((pid = fork()) == 0) {
+            /* Child runs user job */
+            if (execvp(argv[0], argv) < 0) {
+                printf("%s: Command not found.\n", argv[0]);
+                exit(0);
             }
         }
 
-        // Execute the command in the child process
-        if (execvp(argv[0], argv) < 0) {
-            perror("Command execution failed");
-            exit(1);
-        }
-    } else if (pid < 0) {
-        // Fork failed
-        perror("Fork failed");
-    } else {
-        // Parent process
-        int status;
-        if (waitpid(pid, &status, 0) < 0) {
-            perror("Waitpid error");
+        /* Parent waits for foreground job to terminate */
+        if (!bg) {
+            if (waitpid(pid, &status, 0) < 0) {
+                unix_error("waitfg: waitpid error");
+            }
+        } else {
+            printf("%d %s", pid, cmdline);
         }
     }
 }
