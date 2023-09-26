@@ -112,10 +112,10 @@ int main(int argc, char **argv) {
 */
 void eval(char *cmdline) {
     char *argv[MAXARGS];
-    int args, status;
+    int status;
     pid_t pid;
 
-    args = parseline(cmdline, argv);
+    parseline(cmdline, argv);
     if (argv[0] == NULL) {
         return; // Ignore empty lines
     }
