@@ -112,30 +112,25 @@ int main(int argc, char **argv) {
 */
 void eval(char *cmdline) {
     char *argv[MAXARGS];
-    int bg, args, status;
+    int args, status;
     pid_t pid;
 
-    bg = parseline(cmdline, argv);
+    args = parseline(cmdline, argv);
     if (argv[0] == NULL) {
-        return;   /* ignore empty lines */
+        return; // Ignore empty lines
     }
 
     if (!builtin_cmd(argv)) {
         if ((pid = fork()) == 0) {
-            /* Child runs user job */
-            if (execvp(argv[0], argv) < 0) {
-                printf("%s: Command not found.\n", argv[0]);
-                exit(0);
-            }
+            // Child process
+            execvp(argv[0], argv);
+            printf("%s: Command not found.\n", argv[0]);
+            exit(0);
         }
 
-        /* Parent waits for foreground job to terminate */
-        if (!bg) {
-            if (waitpid(pid, &status, 0) < 0) {
-                unix_error("waitfg: waitpid error");
-            }
-        } else {
-            printf("%d %s", pid, cmdline);
+        // Parent process
+        if (waitpid(pid, &status, 0) < 0) {
+            unix_error("waitpid error");
         }
     }
 }
