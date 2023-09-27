@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
 void eval(char *cmdline) {
     char *argv[MAXARGS];
     int status;
-    pid_t pid;
+    pid_t pid = 0;
 
     parseline(cmdline, argv);
     if (argv[0] == NULL) {
