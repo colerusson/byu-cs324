@@ -143,7 +143,7 @@ void eval(char *cmdline) {
                     close(fd);
                 }
                 execvp(argv[0], argv);
-                printf("%s: Command not found.\n", argv[0]);
+                printf("%s: Command not found\n", argv[0]);
                 exit(0);
             }
 
