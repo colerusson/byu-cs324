@@ -210,183 +210,110 @@ int main(int argc, char **argv) {
 //    }
 //}
 
-//void eval(char *cmdline) {
-//    char *argv[MAXARGS];
-//    int status;
-//    pid_t pid = 0;
-//
-//    parseline(cmdline, argv);
-//    if (argv[0] == NULL) {
-//        return; // Ignore empty lines
-//    }
-//
-//    // Initialize arrays for pipes and redirection
-//    int cmds[MAXARGS];
-//    int stdin_redir[MAXARGS];
-//    int stdout_redir[MAXARGS];
-//
-//    int num_cmds = parseargs(argv, cmds, stdin_redir, stdout_redir);
-//
-//    if (num_cmds == 1) {
-//        // No pipes, handle redirection
-//        if (!builtin_cmd(argv)) {
-//            if ((pid = fork()) == 0) {
-//                // Child process
-//                if (stdin_redir[0] >= 0) {
-//                    int fd = open(argv[stdin_redir[0]], O_RDONLY);
-//                    dup2(fd, 0);
-//                    close(fd);
-//                }
-//                if (stdout_redir[0] >= 0) {
-//                    int fd = open(argv[stdout_redir[0]], O_WRONLY | O_CREAT | O_TRUNC, 0666);
-//                    dup2(fd, 1);
-//                    close(fd);
-//                }
-//                execvp(argv[0], argv);
-//                printf("%s: Command not found\n", argv[0]);
-//                exit(0);
-//            }
-//
-//            // Parent process
-//            if (waitpid(pid, &status, 0) < 0) {
-//                unix_error("waitpid error");
-//            }
-//        }
-//    } else {
-//        // Handle piped commands
-//        int i;
-//        int pipefds[2];  // File descriptors for the pipe
-//
-//        int prev_pipe_read = -1;  // Previous pipe's read end
-//        int prev_pipe_write = -1; // Previous pipe's write end
-//
-//        for (i = 0; i < num_cmds; i++) {
-//            if (pipe(pipefds) < 0) {
-//                unix_error("pipe error");
-//            }
-//
-//            if ((pid = fork()) == 0) {
-//                // Child process
-//                if (i == 0 && stdin_redir[i] >= 0) {
-//                    int fd = open(argv[stdin_redir[i]], O_RDONLY);
-//                    dup2(fd, 0);
-//                    close(fd);
-//                }
-//
-//                if (i == num_cmds - 1 && stdout_redir[i] >= 0) {
-//                    int fd = open(argv[stdout_redir[i]], O_WRONLY | O_CREAT | O_TRUNC, 0666);
-//                    dup2(fd, 1);
-//                    close(fd);
-//                }
-//
-//                if (prev_pipe_read >= 0) {
-//                    dup2(prev_pipe_read, 0);
-//                    close(prev_pipe_read);
-//                }
-//
-//                if (pipefds[1] != 1) {
-//                    dup2(pipefds[1], 1);
-//                    close(pipefds[1]);
-//                }
-//
-//                close(pipefds[0]);
-//                execvp(argv[cmds[i]], &argv[cmds[i]]);
-//                printf("%s: Command not found.\n", argv[cmds[i]]);
-//                exit(0);
-//            }
-//
-//            if (prev_pipe_read >= 0) {
-//                close(prev_pipe_read);
-//            }
-//
-//            if (prev_pipe_write >= 0) {
-//                close(prev_pipe_write);
-//            }
-//
-//            close(pipefds[1]);
-//            prev_pipe_read = pipefds[0];
-//            prev_pipe_write = pipefds[1];
-//        }
-//
-//        // Parent process
-//        close(prev_pipe_read);
-//        close(prev_pipe_write);
-//        if (waitpid(pid, &status, 0) < 0) {
-//            unix_error("waitpid error");
-//        }
-//    }
-//}
-
-void eval(char *cmdline){
+void eval(char *cmdline) {
     char *argv[MAXARGS];
+    int status;
+    pid_t pid = 0;
+
+    parseline(cmdline, argv);
+    if (argv[0] == NULL) {
+        return; // Ignore empty lines
+    }
+
+    // Initialize arrays for pipes and redirection
     int cmds[MAXARGS];
     int stdin_redir[MAXARGS];
     int stdout_redir[MAXARGS];
-    int lineProcessGroupID = 0;
 
-    parseline(cmdline, argv);
-    int numCommands = parseargs(argv, cmds, stdin_redir, stdout_redir);
+    int num_cmds = parseargs(argv, cmds, stdin_redir, stdout_redir);
 
-    builtin_cmd(&argv[0]);
+    if (num_cmds == 1) {
+        // No pipes, handle redirection
+        if (!builtin_cmd(argv)) {
+            if ((pid = fork()) == 0) {
+                // Child process
+                if (stdin_redir[0] >= 0) {
+                    int fd = open(argv[stdin_redir[0]], O_RDONLY);
+                    dup2(fd, 0);
+                    close(fd);
+                }
+                if (stdout_redir[0] >= 0) {
+                    int fd = open(argv[stdout_redir[0]], O_WRONLY | O_CREAT | O_TRUNC, 0666);
+                    dup2(fd, 1);
+                    close(fd);
+                }
+                execvp(argv[0], argv);
+                printf("%s: Command not found\n", argv[0]);
+                exit(0);
+            }
 
-    int pipe_files[numCommands][2];
-
-    for(int i = 0; i < numCommands; i++) {
-        if(pipe(pipe_files[i]) == -1){
-            unix_error("Error creating pipe.");
+            // Parent process
+            if (waitpid(pid, &status, 0) < 0) {
+                unix_error("waitpid error");
+            }
         }
-        char *cmnd[MAXARGS];
-        for(int j = 0; j < MAXARGS; j++) {
-            cmnd[j] = argv[cmds[i] + j];
-            if(cmnd[j] == NULL){
-                break;
-            }
-        }
-        int pid = fork();
-        if(pid == 0){
-            if(stdin_redir[i] != -1){
-                FILE *input = fopen(argv[stdin_redir[i]], "r");
-                dup2(fileno(input), 0);
-                close(fileno(input));
-            }
-            if(stdout_redir[i] != -1){
-                FILE *output = fopen(argv[stdout_redir[i]], "w");
-                dup2(fileno(output), 1);
-                close(fileno(output));
-            }
-            if(i == 0 && numCommands > 1){
-                dup2(pipe_files[i][1], 1);
-                close(pipe_files[i][1]);
-            }
-            else if(i == numCommands - 1){
-                dup2(pipe_files[i - 1][0], 0);
-                close(pipe_files[i - 1][0]);
-            }
-            else {
-                dup2(pipe_files[i - 1][0], 0);
-                close(pipe_files[i - 1][0]);
-                dup2(pipe_files[i][1], 1);
-                close(pipe_files[i][1]);
-            }
-            for(int j = 0; j <= i; j++) {
-                close(pipe_files[j][0]);
-                close(pipe_files[j][1]);
-            }
-            execve(argv[i], &argv[cmds[i]], environ);
-        }else {
+    } else {
+        // Handle piped commands
+        int i;
+        int pipefds[2];  // File descriptors for the pipe
 
-            if(lineProcessGroupID == 0){
-                lineProcessGroupID = pid;
+        int prev_pipe_read = -1;  // Previous pipe's read end
+        int prev_pipe_write = -1; // Previous pipe's write end
+
+        for (i = 0; i < num_cmds; i++) {
+            if (pipe(pipefds) < 0) {
+                unix_error("pipe error");
             }
-            setpgid(pid, lineProcessGroupID);
+
+            if ((pid = fork()) == 0) {
+                // Child process
+                if (i == 0 && stdin_redir[i] >= 0) {
+                    int fd = open(argv[stdin_redir[i]], O_RDONLY);
+                    dup2(fd, 0);
+                    close(fd);
+                }
+
+                if (i == num_cmds - 1 && stdout_redir[i] >= 0) {
+                    int fd = open(argv[stdout_redir[i]], O_WRONLY | O_CREAT | O_TRUNC, 0666);
+                    dup2(fd, 1);
+                    close(fd);
+                }
+
+                if (prev_pipe_read >= 0) {
+                    dup2(prev_pipe_read, 0);
+                    close(prev_pipe_read);
+                }
+
+                if (pipefds[1] != 1) {
+                    dup2(pipefds[1], 1);
+                    close(pipefds[1]);
+                }
+
+                close(pipefds[0]);
+                execvp(argv[cmds[i]], &argv[cmds[i]]);
+                printf("%s: Command not found.\n", argv[cmds[i]]);
+                exit(0);
+            }
+
+            if (prev_pipe_read >= 0) {
+                close(prev_pipe_read);
+            }
+
+            if (prev_pipe_write >= 0) {
+                close(prev_pipe_write);
+            }
+
+            close(pipefds[1]);
+            prev_pipe_read = pipefds[0];
+            prev_pipe_write = pipefds[1];
         }
-    }
-    for(int i = 0; i < numCommands; i++) {
-        close(pipe_files[i][0]);
-        close(pipe_files[i][1]);
-    }
-    for(int i = 0; i < numCommands; i++) {
-        waitpid(-1*lineProcessGroupID, NULL, 0);
+
+        // Parent process
+        close(prev_pipe_read);
+        close(prev_pipe_write);
+        if (waitpid(pid, &status, 0) < 0) {
+            unix_error("waitpid error");
+        }
     }
 }
 
