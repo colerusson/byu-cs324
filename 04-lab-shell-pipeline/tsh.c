@@ -205,11 +205,22 @@ void eval(char *cmdline) {
         close(prev_pipe_read);
         close(pipefds[1]);
 
-        if (waitpid(pid, &status, 0) < 0) {
-            unix_error("waitpid error");
-        }
+        //if (waitpid(pid, &status, 0) < 0) {
+        //    unix_error("waitpid error");
+        //}
 
+        if (!bg) {
+            while (waitpid(pid, &status, 0) < 0) {
+                unix_error("waitpid error");
+            }
+        } else {
+            // Background job, print job info and return immediately
+            addjob(jobs, pid, BG, cmdline);
+            printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline);
+        }
     }
+
+    return;
 }
 
 /*
