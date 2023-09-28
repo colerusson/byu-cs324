@@ -190,7 +190,6 @@ void eval(char *cmdline) {
 
                 execvp(argv[cmds[i]], &argv[cmds[i]]);
                 printf("%s: Command not found\n", argv[0]);
-                //perror(argv[0]);
                 exit(0);
             }
 
@@ -206,8 +205,11 @@ void eval(char *cmdline) {
         close(prev_pipe_read);
         close(pipefds[1]);
 
-        if (waitpid(pid, &status, 0) < 0) {
-            unix_error("waitpid error");
+        //if (waitpid(pid, &status, 0) < 0) {
+        //    unix_error("waitpid error");
+        //}
+        while (waitpid(-1, &status, WNOHANG) > 0) {
+            // Reap all terminated child processes.
         }
 
     }
