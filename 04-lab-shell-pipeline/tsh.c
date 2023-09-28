@@ -394,10 +394,9 @@ void eval(char *cmdline) {
                 }
 
                 close(pipefds[0]);
-                close(pipefds[1]);
 
                 execvp(argv[cmds[i]], &argv[cmds[i]]);
-                printf("%s: Command not found.\n", argv[cmds[i]]);
+                printf("%s: Command not found\n", argv[cmds[i]]);
                 exit(0);
             }
 
@@ -405,15 +404,18 @@ void eval(char *cmdline) {
                 close(prev_pipe_read);
             }
 
+            close(pipefds[1]);
             prev_pipe_read = pipefds[0];
         }
 
         // Parent process
         close(prev_pipe_read);
         close(pipefds[1]);
+
         if (waitpid(pid, &status, 0) < 0) {
             unix_error("waitpid error");
         }
+
     }
 }
 
