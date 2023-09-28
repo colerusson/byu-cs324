@@ -189,8 +189,8 @@ void eval(char *cmdline) {
                 close(pipefds[0]);
 
                 execvp(argv[cmds[i]], &argv[cmds[i]]);
-                //printf("%s: Command not found\n", argv[cmds[i]]);
-                perror(argv[0]);
+                printf("%s: Command not found\n", argv[0]);
+                //perror(argv[0]);
                 exit(0);
             }
 
