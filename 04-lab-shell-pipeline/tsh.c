@@ -190,7 +190,7 @@ void eval(char *cmdline) {
 
                 execvp(argv[cmds[i]], &argv[cmds[i]]);
                 //printf("%s: Command not found\n", argv[cmds[i]]);
-                perror("Command not found\n");
+                perror(argv[0]);
                 exit(0);
             }
 
