@@ -205,10 +205,6 @@ void eval(char *cmdline) {
         close(prev_pipe_read);
         close(pipefds[1]);
 
-//        if (waitpid(pid, &status, 0) < 0) {
-//            unix_error("waitpid error");
-//        }
-
         // Wait for all child processes to terminate
         for (i = 0; i < num_cmds; i++) {
             if (waitpid(-1, &status, 0) < 0) {
