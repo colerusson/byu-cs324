@@ -27,27 +27,111 @@ int main(int argc, char *argv[]) {
 	sigaction(SIGINT, &sigact, NULL);
 
 	switch (scenario[0]) {
-	case '0':
+	case '0': // Working!
+        kill(pid, SIGHUP);
+        sleep(1);
 		break;
-	case '1':
+	case '1': // TODO: not working
+        // use the signals in signals.c to produce no output, as seen in the README
+        kill(pid, SIGINT);
+        sleep(1);
+        kill(pid, SIGUSR1);
+        sleep(1);
+        kill(pid, SIGUSR2);
+        sleep(1);
+        kill(pid, SIGHUP);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
 		break;
-	case '2':
+	case '2': // TODO: not working
+        kill(pid, SIGHUP);
+        sleep(5);
+        kill(pid, 30);
+        sleep(2);
+        kill(pid, 16);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
+        break;
+	case '3': // TODO: not working
+        kill(pid, SIGINT);
+        sleep(1);
+        kill(pid, SIGUSR1);
+        sleep(1);
+        kill(pid, SIGHUP);
+        sleep(1);
+        kill(pid, 30);
+        sleep(1);
+        kill(pid, SIGQUIT);
+        sleep(1);
+        break;
+	case '4': // TODO: not working
+        kill(pid, SIGINT);
+        sleep(1);
+        kill(pid, SIGHUP);
+        sleep(1);
+        kill(pid, 30);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
 		break;
-	case '3':
+	case '5': // TODO: not working
 		break;
-	case '4':
+	case '6': // Working!
+        kill(pid, SIGINT);
+        sleep(1);
+        kill(pid, SIGUSR1);
+        sleep(1);
+        kill(pid, SIGUSR2);
+        sleep(1);
+        kill(pid, 30);
+        sleep(1);
+        kill(pid, 16);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
 		break;
-	case '5':
+	case '7': // Working!
+        kill(pid, SIGINT);
+        sleep(1);
+        kill(pid, SIGUSR1);
+        sleep(1);
+        kill(pid, SIGUSR2);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
 		break;
-	case '6':
+	case '8': // TODO: not working
 		break;
-	case '7':
+	case '9': // TODO: not working
 		break;
-	case '8':
-		break;
-	case '9': 
-		break;
-
+    case 'a': // testing here
+        kill(pid, SIGINT);
+        sleep(1);
+        kill(pid, SIGUSR1);
+        sleep(1);
+        kill(pid, SIGUSR2);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
+        kill(pid, SIGQUIT);
+        sleep(1);
+        kill(pid, SIGTSTP);
+        sleep(1);
+        kill(pid, SIGCONT);
+        sleep(1);
+        kill(pid, SIGCHLD);
+        sleep(1);
+        kill(pid, SIGTTIN);
+        sleep(1);
+        kill(pid, SIGTTOU);
+        sleep(1);
+        kill(pid, SIGPIPE);
+        sleep(1);
+        kill(pid, SIGALRM);
+        sleep(1);
+        break;
 	}
 	waitpid(pid, NULL, 0);
 }
