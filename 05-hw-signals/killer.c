@@ -27,17 +27,17 @@ int main(int argc, char *argv[]) {
 	sigaction(SIGINT, &sigact, NULL);
 
 	switch (scenario[0]) {
-	case '0': // Working!
+	case '0':
         kill(pid, SIGHUP);
         sleep(1);
 		break;
-	case '1': // Working!
+	case '1':
         kill(pid, 12);
         sleep(1);
         kill(pid, SIGTERM);
         sleep(1);
         break;
-	case '2': // Working!
+	case '2':
         kill(pid, SIGHUP);
         sleep(1);
         kill(pid, 30);
@@ -47,7 +47,7 @@ int main(int argc, char *argv[]) {
         kill(pid, SIGTERM);
         sleep(1);
         break;
-	case '3': // Working!
+	case '3':
         kill(pid, SIGINT);
         sleep(1);
         kill(pid, SIGINT);
@@ -59,7 +59,7 @@ int main(int argc, char *argv[]) {
         kill(pid, SIGTERM);
         sleep(1);
         break;
-	case '4': // Working!
+	case '4':
         kill(pid, SIGINT);
         sleep(1);
         kill(pid, SIGHUP);
@@ -69,7 +69,7 @@ int main(int argc, char *argv[]) {
         kill(pid, SIGTERM);
         sleep(1);
         break;
-	case '5': // Working!
+	case '5':
         kill(pid, SIGUSR2);
         sleep(1);
         kill(pid, SIGHUP);
@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
         kill(pid, SIGTERM);
         sleep(2);
         break;
-	case '6': // Working!
+	case '6':
         kill(pid, SIGINT);
         sleep(1);
         kill(pid, SIGUSR1);
@@ -91,7 +91,7 @@ int main(int argc, char *argv[]) {
         kill(pid, SIGTERM);
         sleep(1);
 		break;
-	case '7': // Working!
+	case '7':
         kill(pid, SIGINT);
         sleep(1);
         kill(pid, SIGUSR1);
@@ -101,19 +101,33 @@ int main(int argc, char *argv[]) {
         kill(pid, SIGTERM);
         sleep(1);
 		break;
-	case '8': // TODO: not working, prints 1 2 7 25 (should be 1 2 6)
+	case '8':
         kill(pid, SIGINT);
         sleep(1);
-        kill(pid, SIGUSR1);
+        kill(pid, 31);
         sleep(1);
-        kill(pid, SIGUSR2);
+        kill(pid, 10);
         sleep(1);
         kill(pid, 30);
         sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
+        kill(pid, 12);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
         break;
-	case '9': // TODO: not working, prints 8 1 9 2 25 (should be 8 9 1 2, and can't use SIGHUP or SIGINT)
+	case '9':
+        kill(pid, 31);
+        sleep(1);
         kill(pid, SIGQUIT);
-        sleep(3);
+        sleep(1);
+        kill(pid, 31);
+        sleep(1);
+        kill(pid, 12);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
 		break;
 	}
 	waitpid(pid, NULL, 0);
