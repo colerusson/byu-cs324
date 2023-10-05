@@ -31,53 +31,52 @@ int main(int argc, char *argv[]) {
         kill(pid, SIGHUP);
         sleep(1);
 		break;
-	case '1': // TODO: not working
-        // use the signals in signals.c to produce no output, as seen in the README
+	case '1': // Working!
+        kill(pid, 12);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
+        break;
+	case '2': // Working!
+        kill(pid, SIGHUP);
+        sleep(1);
+        kill(pid, 30);
+        sleep(1);
+        kill(pid, 12);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
+        break;
+	case '3': // Working!
         kill(pid, SIGINT);
         sleep(1);
-        kill(pid, SIGUSR1);
+        kill(pid, SIGINT);
         sleep(1);
+        kill(pid, SIGUSR2);
+        sleep(1);
+        kill(pid, 12);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
+        break;
+	case '4': // Working!
+        kill(pid, SIGINT);
+        sleep(1);
+        kill(pid, SIGHUP);
+        sleep(1);
+        kill(pid, 12);
+        sleep(1);
+        kill(pid, SIGTERM);
+        sleep(1);
+        break;
+	case '5': // Working!
         kill(pid, SIGUSR2);
         sleep(1);
         kill(pid, SIGHUP);
         sleep(1);
         kill(pid, SIGTERM);
-        sleep(1);
-		break;
-	case '2': // TODO: not working
-        kill(pid, SIGHUP);
-        sleep(5);
-        kill(pid, 30);
         sleep(2);
-        kill(pid, 16);
-        sleep(1);
-        kill(pid, SIGTERM);
-        sleep(1);
         break;
-	case '3': // TODO: not working
-        kill(pid, SIGINT);
-        sleep(1);
-        kill(pid, SIGUSR1);
-        sleep(1);
-        kill(pid, SIGHUP);
-        sleep(1);
-        kill(pid, 30);
-        sleep(1);
-        kill(pid, SIGQUIT);
-        sleep(1);
-        break;
-	case '4': // TODO: not working
-        kill(pid, SIGINT);
-        sleep(1);
-        kill(pid, SIGHUP);
-        sleep(1);
-        kill(pid, 30);
-        sleep(1);
-        kill(pid, SIGTERM);
-        sleep(1);
-		break;
-	case '5': // TODO: not working
-		break;
 	case '6': // Working!
         kill(pid, SIGINT);
         sleep(1);
@@ -102,36 +101,20 @@ int main(int argc, char *argv[]) {
         kill(pid, SIGTERM);
         sleep(1);
 		break;
-	case '8': // TODO: not working
-		break;
-	case '9': // TODO: not working
-		break;
-    case 'a': // testing here
+	case '8': // TODO: not working, prints 1 2 7 25 (should be 1 2 6)
         kill(pid, SIGINT);
         sleep(1);
         kill(pid, SIGUSR1);
         sleep(1);
         kill(pid, SIGUSR2);
         sleep(1);
-        kill(pid, SIGTERM);
-        sleep(1);
-        kill(pid, SIGQUIT);
-        sleep(1);
-        kill(pid, SIGTSTP);
-        sleep(1);
-        kill(pid, SIGCONT);
-        sleep(1);
-        kill(pid, SIGCHLD);
-        sleep(1);
-        kill(pid, SIGTTIN);
-        sleep(1);
-        kill(pid, SIGTTOU);
-        sleep(1);
-        kill(pid, SIGPIPE);
-        sleep(1);
-        kill(pid, SIGALRM);
+        kill(pid, 30);
         sleep(1);
         break;
+	case '9': // TODO: not working, prints 8 1 9 2 25 (should be 8 9 1 2, and can't use SIGHUP or SIGINT)
+        kill(pid, SIGQUIT);
+        sleep(3);
+		break;
 	}
 	waitpid(pid, NULL, 0);
 }
