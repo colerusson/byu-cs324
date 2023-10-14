@@ -444,9 +444,8 @@ void sigchld_handler(int sig)
             }
         } else if (WIFSTOPPED(status)) {
             // The child process was stopped, update its state
-            getjobpid(jobs, pid)->state = ST;
-
-            if (WIFSTOPPED(status)) {
+            struct job_t *job = getjobpid(jobs, pid);
+            if (job) {
                 job->state = ST;
                 printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, WSTOPSIG(status));
             }
