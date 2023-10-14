@@ -431,9 +431,10 @@ void sigchld_handler(int sig)
 {
     pid_t pid;
     int status;
-    int jid = pid2jid(pid);
+    int jid;
 
     while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
+        jid = pid2jid(pid);
         if (WIFEXITED(status) || WIFSIGNALED(status)) {
             // Handle the terminated or stopped child process
             deletejob(jobs, pid);
