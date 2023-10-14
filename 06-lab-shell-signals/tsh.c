@@ -174,7 +174,7 @@ void eval(char *cmdline)
 
     sigfillset(&mask_all);
 
-    int status;
+    //int status;
 
     bg = parseline(cmdline, argv);
     if (argv[0] == NULL)
@@ -199,18 +199,18 @@ void eval(char *cmdline)
             addjob(jobs, pid, pid, FG, cmdline);
             sigprocmask(SIG_SETMASK, &prev_all, NULL); // Unblock signals
             waitfg(pid); // Wait for the foreground job
-            status = 0;
+            //status = 0;
         } else {
             addjob(jobs, pid, pid, BG, cmdline);
             sigprocmask(SIG_SETMASK, &prev_all, NULL); // Unblock signals
             printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline);
-            status = 0;
+            //status = 0;
         }
 
-        if (WIFSIGNALED(status)) {
-            int jid = pid2jid(pid);
-            printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, WTERMSIG(status));
-        }
+//        if (WIFSIGNALED(status)) {
+//            int jid = pid2jid(pid);
+//            printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, WTERMSIG(status));
+//        }
     }
 }
 
