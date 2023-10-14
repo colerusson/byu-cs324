@@ -440,7 +440,7 @@ void sigchld_handler(int sig)
 
             if (WIFSTOPPED(status)) {
                 int jid = pid2jid(pid);
-                printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, WIFSTOPPED(status));
+                printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, 20);
             }
         }
     }
