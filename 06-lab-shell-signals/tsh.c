@@ -380,7 +380,7 @@ void do_bgfg(char **argv)
         if (isJobID) {
             printf("%s: No such job\n", arg);
         } else {
-            if (id == 0 || id > maxjid(jobs)) {
+            if (id > maxjid(jobs)) {
                 printf("%s: No such process\n", arg);
             }
             else if (strcmp(cmd, "fg") == 0) {
