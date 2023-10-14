@@ -391,6 +391,7 @@ void do_bgfg(char **argv)
         waitfg(job->pid);
     } else {
         // If "bg" was specified, print job info
+        job->state = BG;
         printf("[%d] (%d) %s", job->jid, job->pid, job->cmdline);
     }
 }
