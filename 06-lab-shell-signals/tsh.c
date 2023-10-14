@@ -381,7 +381,7 @@ void do_bgfg(char **argv)
             printf("%s: No such job\n", arg);
         } else {
             if (id > maxjid(jobs)) {
-                printf("%s: No such process\n", arg);
+                printf("(%s): No such process\n", arg);
             }
             else if (strcmp(cmd, "fg") == 0) {
                 printf("fg: argument must be a PID or %%jobid\n");
