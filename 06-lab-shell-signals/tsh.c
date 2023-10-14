@@ -431,6 +431,7 @@ void sigchld_handler(int sig)
 {
     pid_t pid;
     int status;
+    int jid = pid2jid(pid);
 
     while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
         if (WIFEXITED(status) || WIFSIGNALED(status)) {
@@ -438,15 +439,15 @@ void sigchld_handler(int sig)
             deletejob(jobs, pid);
 
             if (WIFSIGNALED(status)) {
-                int jid = pid2jid(pid);
-                printf("Job [%d] (%d) terminated by signal %d\n", 2, pid, WTERMSIG(status));
+                //int jid = pid2jid(pid);
+                printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, WTERMSIG(status));
             }
         } else if (WIFSTOPPED(status)) {
             // The child process was stopped, update its state
             getjobpid(jobs, pid)->state = ST;
 
             if (WIFSTOPPED(status)) {
-                int jid = pid2jid(pid);
+                //int jid = pid2jid(pid);
                 printf("Job [%d] (%d) stopped by signal %d\n", jid, pid, 20);
             }
         }
