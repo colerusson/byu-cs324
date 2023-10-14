@@ -429,9 +429,11 @@ void sigchld_handler(int sig)
         if (WIFEXITED(status) || WIFSIGNALED(status)) {
             // Handle the terminated or stopped child process
             deletejob(jobs, pid);
-            int jid = pid2jid(pid);
-            printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, WTERMSIG(status));
 
+            if (WIFSIGNALED(status)) {
+                int jid = pid2jid(pid);
+                printf("Job [%d] (%d) terminated by signal %d\n", jid, pid, WTERMSIG(status));
+            }
         } else if (WIFSTOPPED(status)) {
             // The child process was stopped, update its state
             getjobpid(jobs, pid)->state = ST;
