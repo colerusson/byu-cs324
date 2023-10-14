@@ -378,7 +378,12 @@ void do_bgfg(char **argv)
     if (job == NULL) {
         // Print an error if the job doesn't exist
         if (isJobID) {
-            printf("%s: No such job\n", arg);
+            // check if the number is valid and if not print no such process
+            if (id == 0 || id > maxjid(jobs)) {
+                printf("%s: No such process\n", arg);
+            } else {
+                printf("%s: No such job\n", arg);
+            }
         } else {
             if (strcmp(cmd, "fg") == 0) {
                 printf("fg: argument must be a PID or %%jobid\n");
