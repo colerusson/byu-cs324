@@ -380,7 +380,7 @@ void do_bgfg(char **argv)
         if (isJobID) {
             printf("%s: No such job\n", arg);
         } else {
-            printf("(%d): No such process\n", id);
+            printf("argument must be a PID or %jobid\n");
         }
         return;
     }
