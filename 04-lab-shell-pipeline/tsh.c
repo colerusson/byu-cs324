@@ -155,14 +155,17 @@ void eval(char *cmdline) {
     } else {
         // Handle piped commands
         int i;
-        int pipefds[2];  // File descriptors for the pipe
-        int prev_pipe_read = -1;  // Previous pipe's read end
+        int pipefds[num_cmds - 1][2];  // File descriptors for the pipes
 
-        for (i = 0; i < num_cmds; i++) {
-            if (pipe(pipefds) < 0) {
+        // Create pipes
+        for (i = 0; i < num_cmds - 1; i++) {
+            if (pipe(pipefds[i]) < 0) {
                 unix_error("pipe error");
             }
+        }
 
+        // Iterate through commands
+        for (i = 0; i < num_cmds; i++) {
             if ((pid = fork()) == 0) {
                 // Child process
                 if (i == 0 && stdin_redir[i] >= 0) {
@@ -170,40 +173,40 @@ void eval(char *cmdline) {
                     dup2(fd, 0);
                     close(fd);
                 }
-
                 if (i == num_cmds - 1 && stdout_redir[i] >= 0) {
                     int fd = open(argv[stdout_redir[i]], O_WRONLY | O_CREAT | O_TRUNC, 0666);
                     dup2(fd, 1);
                     close(fd);
                 }
 
-                if (prev_pipe_read >= 0) {
-                    dup2(prev_pipe_read, 0);
-                    close(prev_pipe_read);
-                }
-
                 if (i < num_cmds - 1) {
-                    dup2(pipefds[1], 1);
+                    // Redirect standard output to the next pipe
+                    dup2(pipefds[i][1], 1);
                 }
 
-                close(pipefds[0]);
+                if (i > 0) {
+                    // Redirect standard input from the previous pipe
+                    dup2(pipefds[i - 1][0], 0);
+                }
+
+                // Close all pipe descriptors
+                for (int j = 0; j < num_cmds - 1; j++) {
+                    close(pipefds[j][0]);
+                    close(pipefds[j][1]);
+                }
 
                 execvp(argv[cmds[i]], &argv[cmds[i]]);
                 printf("%s: Command not found\n", argv[cmds[0]]);
                 exit(0);
             }
-
-            if (prev_pipe_read >= 0) {
-                close(prev_pipe_read);
-            }
-
-            close(pipefds[1]);
-            prev_pipe_read = pipefds[0];
         }
 
         // Parent process
-        close(prev_pipe_read);
-        close(pipefds[1]);
+        // Close all pipe descriptors
+        for (i = 0; i < num_cmds - 1; i++) {
+            close(pipefds[i][0]);
+            close(pipefds[i][1]);
+        }
 
         // Wait for all child processes to terminate
         for (i = 0; i < num_cmds; i++) {
@@ -211,9 +214,113 @@ void eval(char *cmdline) {
                 unix_error("waitpid error");
             }
         }
-
     }
 }
+
+//void eval(char *cmdline) {
+//    char *argv[MAXARGS];
+//    int status;
+//    pid_t pid = 0;
+//
+//    parseline(cmdline, argv);
+//    if (argv[0] == NULL) {
+//        return; // Ignore empty lines
+//    }
+//
+//    // Initialize arrays for pipes and redirection
+//    int cmds[MAXARGS];
+//    int stdin_redir[MAXARGS];
+//    int stdout_redir[MAXARGS];
+//
+//    int num_cmds = parseargs(argv, cmds, stdin_redir, stdout_redir);
+//
+//    if (num_cmds == 1) {
+//        // No pipes, handle redirection
+//        if (!builtin_cmd(argv)) {
+//            if ((pid = fork()) == 0) {
+//                // Child process
+//                if (stdin_redir[0] >= 0) {
+//                    int fd = open(argv[stdin_redir[0]], O_RDONLY);
+//                    dup2(fd, 0);
+//                    close(fd);
+//                }
+//                if (stdout_redir[0] >= 0) {
+//                    int fd = open(argv[stdout_redir[0]], O_WRONLY | O_CREAT | O_TRUNC, 0666);
+//                    dup2(fd, 1);
+//                    close(fd);
+//                }
+//                execvp(argv[0], argv);
+//                printf("%s: Command not found\n", argv[0]);
+//                exit(0);
+//            }
+//
+//            // Parent process
+//            if (waitpid(pid, &status, 0) < 0) {
+//                unix_error("waitpid error");
+//            }
+//        }
+//    } else {
+//        // Handle piped commands
+//        int i;
+//        int pipefds[2];  // File descriptors for the pipe
+//        int prev_pipe_read = -1;  // Previous pipe's read end
+//
+//        for (i = 0; i < num_cmds; i++) {
+//            if (pipe(pipefds) < 0) {
+//                unix_error("pipe error");
+//            }
+//
+//            if ((pid = fork()) == 0) {
+//                // Child process
+//                if (i == 0 && stdin_redir[i] >= 0) {
+//                    int fd = open(argv[stdin_redir[i]], O_RDONLY);
+//                    dup2(fd, 0);
+//                    close(fd);
+//                }
+//
+//                if (i == num_cmds - 1 && stdout_redir[i] >= 0) {
+//                    int fd = open(argv[stdout_redir[i]], O_WRONLY | O_CREAT | O_TRUNC, 0666);
+//                    dup2(fd, 1);
+//                    close(fd);
+//                }
+//
+//                if (prev_pipe_read >= 0) {
+//                    dup2(prev_pipe_read, 0);
+//                    close(prev_pipe_read);
+//                }
+//
+//                if (i < num_cmds - 1) {
+//                    dup2(pipefds[1], 1);
+//                }
+//
+//                close(pipefds[0]);
+//
+//                execvp(argv[cmds[i]], &argv[cmds[i]]);
+//                printf("%s: Command not found\n", argv[cmds[0]]);
+//                exit(0);
+//            }
+//
+//            if (prev_pipe_read >= 0) {
+//                close(prev_pipe_read);
+//            }
+//
+//            close(pipefds[1]);
+//            prev_pipe_read = pipefds[0];
+//        }
+//
+//        // Parent process
+//        close(prev_pipe_read);
+//        close(pipefds[1]);
+//
+//        // Wait for all child processes to terminate
+//        for (i = 0; i < num_cmds; i++) {
+//            if (waitpid(-1, &status, 0) < 0) {
+//                unix_error("waitpid error");
+//            }
+//        }
+//
+//    }
+//}
 
 /*
  * parseargs - Parse the arguments to identify pipelined commands
