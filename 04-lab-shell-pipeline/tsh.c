@@ -203,7 +203,7 @@ void eval(char *cmdline) {
                 }
 
                 execvp(argv[cmds[i]], &argv[cmds[i]]);
-                printf("%s: Command not found\n", argv[cmds[i]]);
+                printf("(%d)\n", getpid()); // Print the PID in the correct format
                 exit(0);
             }
 
@@ -226,6 +226,7 @@ void eval(char *cmdline) {
         }
     }
 }
+
 
 
 //void eval(char *cmdline) {
