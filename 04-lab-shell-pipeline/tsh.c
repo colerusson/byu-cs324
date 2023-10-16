@@ -114,7 +114,7 @@ void eval(char *cmdline) {
     char *argv[MAXARGS];
     int status;
     pid_t pid;
-    int pipefds[2]; // File descriptors for the pipe
+    sigset_t mask, prev_mask;
 
     parseline(cmdline, argv);
     if (argv[0] == NULL) {
@@ -128,17 +128,15 @@ void eval(char *cmdline) {
 
     int num_cmds = parseargs(argv, cmds, stdin_redir, stdout_redir);
 
-    // Create a new process group for the pipeline
-    setpgid(0, 0); // Set the PGID for the shell to itself
-
     if (num_cmds == 1) {
         // No pipes, handle redirection
         if (!builtin_cmd(argv)) {
+            sigemptyset(&mask);
+            sigaddset(&mask, SIGCHLD);
+            sigprocmask(SIG_BLOCK, &mask, &prev_mask);
             if ((pid = fork()) == 0) {
                 // Child process
-                // Set the PGID for the child to match the shell's PGID
-                setpgid(0, 0);
-
+                sigprocmask(SIG_SETMASK, &prev_mask, NULL);
                 if (stdin_redir[0] >= 0) {
                     int fd = open(argv[stdin_redir[0]], O_RDONLY);
                     dup2(fd, 0);
@@ -155,15 +153,16 @@ void eval(char *cmdline) {
             }
 
             // Parent process
-            setpgid(pid, pid); // Set the PGID of the child to its own PID
             if (waitpid(pid, &status, 0) < 0) {
                 unix_error("waitpid error");
             }
         }
+        sigprocmask(SIG_SETMASK, &prev_mask, NULL);
     } else {
         // Handle piped commands
         int i;
-        int prev_pipe_read = -1; // Previous pipe's read end
+        int pipefds[2];  // File descriptors for the pipe
+        int prev_pipe_read = -1;  // Previous pipe's read end
 
         for (i = 0; i < num_cmds; i++) {
             if (pipe(pipefds) < 0) {
@@ -172,9 +171,7 @@ void eval(char *cmdline) {
 
             if ((pid = fork()) == 0) {
                 // Child process
-                // Set the PGID for the child to match the shell's PGID
-                setpgid(0, 0);
-
+                sigprocmask(SIG_SETMASK, &prev_mask, NULL);
                 if (i == 0 && stdin_redir[i] >= 0) {
                     int fd = open(argv[stdin_redir[i]], O_RDONLY);
                     dup2(fd, 0);
@@ -193,17 +190,13 @@ void eval(char *cmdline) {
                 }
 
                 if (i < num_cmds - 1) {
-                    if (pipe(pipefds) < 0) {
-                        unix_error("pipe error");
-                    }
-                    // Set the PGID of the child to match the shell's PGID
-                    setpgid(0, 0);
                     dup2(pipefds[1], 1);
-                    close(pipefds[0]);
                 }
 
+                close(pipefds[0]);
+
                 execvp(argv[cmds[i]], &argv[cmds[i]]);
-                printf("(%d)\n", getpid()); // Print the PID in the correct format
+                printf("%s: Command not found\n", argv[cmds[0]]);
                 exit(0);
             }
 
@@ -217,6 +210,7 @@ void eval(char *cmdline) {
 
         // Parent process
         close(prev_pipe_read);
+        close(pipefds[1]);
 
         // Wait for all child processes to terminate
         for (i = 0; i < num_cmds; i++) {
@@ -226,6 +220,7 @@ void eval(char *cmdline) {
         }
     }
 }
+
 
 
 
