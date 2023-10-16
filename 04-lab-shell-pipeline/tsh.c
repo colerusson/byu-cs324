@@ -136,6 +136,7 @@ void eval(char *cmdline) {
             sigprocmask(SIG_BLOCK, &mask, &prev_mask);
             if ((pid = fork()) == 0) {
                 // Child process
+                setpgid(0, 0); // Set the process group to the child's PID
                 sigprocmask(SIG_SETMASK, &prev_mask, NULL);
                 if (stdin_redir[0] >= 0) {
                     int fd = open(argv[stdin_redir[0]], O_RDONLY);
@@ -172,6 +173,7 @@ void eval(char *cmdline) {
             if ((pid = fork()) == 0) {
                 // Child process
                 sigprocmask(SIG_SETMASK, &prev_mask, NULL);
+                setpgid(0, 0); // Set the process group to the child's PID
                 if (i == 0 && stdin_redir[i] >= 0) {
                     int fd = open(argv[stdin_redir[i]], O_RDONLY);
                     dup2(fd, 0);
@@ -220,6 +222,7 @@ void eval(char *cmdline) {
         }
     }
 }
+
 
 
 
