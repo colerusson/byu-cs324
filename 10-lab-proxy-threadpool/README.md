@@ -5,6 +5,18 @@ concepts associated with client and server sockets, HTTP, and concurrent
 programming by building a working HTTP proxy server with a threadpool.
 
 
+# Maintain Your Repository
+
+ Before beginning:
+ - [Mirror the class repository](../01a-hw-private-repo-mirror), if you haven't
+   already.
+ - [Merge upstream changes](../01a-hw-private-repo-mirror#update-your-mirrored-repository-from-the-upstream)
+   into your private repository.
+
+ As you complete the assignment:
+ - [Commit changes to your private repository](../01a-hw-private-repo-mirror#commit-and-push-local-changes-to-your-private-repo).
+
+
 # Table of Contents
 
  - [Overview](#overview)
@@ -73,21 +85,20 @@ Read the following in preparation for this assignment:
 Additionally, man pages for the following are referenced throughout the
 assignment:
 
- - `tcp`
- - `socket`
- - `socket()`
- - `send()`
- - `recv()`
- - `bind()`
- - `connect()`
- - `getaddrinfo()`
- - `pthread_create()`
- - `pthread_detach()`
- - `pthread_self()`
- - `sem_init()`
- - `sem_post()`
- - `sem_wait()`
- - `sem_overview()` (unnamed semaphores)
+ - `tcp(7)`
+ - `socket(2)`, `socket(7)`
+ - `send(2)`
+ - `recv(2)`
+ - `bind(2)`
+ - `connect(2)`
+ - `getaddrinfo(3)`
+ - `pthread_create(3)`
+ - `pthread_detach(3)`
+ - `pthread_self(3)`
+ - `sem_init(3)`
+ - `sem_post(3)`
+ - `sem_wait(3)`
+ - `sem_overview(7)` (unnamed semaphores)
 
 
 # Instructions

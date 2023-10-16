@@ -7,6 +7,18 @@ their messages, one line at a time, until they disconnect.  You will experiment
 with that code and analyze what it is doing.
 
 
+# Maintain Your Repository
+
+ Before beginning:
+ - [Mirror the class repository](../01a-hw-private-repo-mirror), if you haven't
+   already.
+ - [Merge upstream changes](../01a-hw-private-repo-mirror#update-your-mirrored-repository-from-the-upstream)
+   into your private repository.
+
+ As you complete the assignment:
+ - [Commit changes to your private repository](../01a-hw-private-repo-mirror#commit-and-push-local-changes-to-your-private-repo).
+
+
 # Preparation
 
  1. Read the following in preparation for this assignment:
@@ -16,10 +28,10 @@ with that code and analyze what it is doing.
     Additionally, man pages for the following are also referenced throughout the
     assignment:
 
-    - `pthreads`
-    - `sem_init()`
-    - `sem_wait()`
-    - `sem_post()`
+    - `pthreads(7)`
+    - `sem_init(3)`
+    - `sem_wait(3)`
+    - `sem_post(3)`
 
  2. Run `make` to build four servers: `echoserveri`, `echoserverp`,
     `echoservert`, and `echoservert_pre`.  These are versions of the echo
