@@ -113,7 +113,8 @@ int main(int argc, char **argv) {
 void eval(char *cmdline) {
     char *argv[MAXARGS];
     int status;
-    pid_t pid = 0;
+    pid_t pid;
+    int pgid = 0; // Process group ID
 
     parseline(cmdline, argv);
     if (argv[0] == NULL) {
@@ -127,11 +128,17 @@ void eval(char *cmdline) {
 
     int num_cmds = parseargs(argv, cmds, stdin_redir, stdout_redir);
 
+    // Create a new process group for the pipeline
+    setpgid(0, 0); // Set the PGID for the shell to itself
+
     if (num_cmds == 1) {
         // No pipes, handle redirection
         if (!builtin_cmd(argv)) {
             if ((pid = fork()) == 0) {
                 // Child process
+                // Set the PGID for the child to match the shell's PGID
+                setpgid(0, 0);
+
                 if (stdin_redir[0] >= 0) {
                     int fd = open(argv[stdin_redir[0]], O_RDONLY);
                     dup2(fd, 0);
@@ -148,6 +155,7 @@ void eval(char *cmdline) {
             }
 
             // Parent process
+            setpgid(pid, pid); // Set the PGID of the child to its own PID
             if (waitpid(pid, &status, 0) < 0) {
                 unix_error("waitpid error");
             }
@@ -155,58 +163,56 @@ void eval(char *cmdline) {
     } else {
         // Handle piped commands
         int i;
-        int pipefds[num_cmds - 1][2];  // File descriptors for the pipes
+        int prev_pipe_read = -1; // Previous pipe's read end
 
-        // Create pipes
-        for (i = 0; i < num_cmds - 1; i++) {
-            if (pipe(pipefds[i]) < 0) {
-                unix_error("pipe error");
-            }
-        }
-
-        // Iterate through commands
         for (i = 0; i < num_cmds; i++) {
             if ((pid = fork()) == 0) {
                 // Child process
+                // Set the PGID for the child to match the shell's PGID
+                setpgid(0, 0);
+
                 if (i == 0 && stdin_redir[i] >= 0) {
                     int fd = open(argv[stdin_redir[i]], O_RDONLY);
                     dup2(fd, 0);
                     close(fd);
                 }
+
                 if (i == num_cmds - 1 && stdout_redir[i] >= 0) {
                     int fd = open(argv[stdout_redir[i]], O_WRONLY | O_CREAT | O_TRUNC, 0666);
                     dup2(fd, 1);
                     close(fd);
                 }
 
+                if (prev_pipe_read >= 0) {
+                    dup2(prev_pipe_read, 0);
+                    close(prev_pipe_read);
+                }
+
                 if (i < num_cmds - 1) {
-                    // Redirect standard output to the next pipe
-                    dup2(pipefds[i][1], 1);
-                }
-
-                if (i > 0) {
-                    // Redirect standard input from the previous pipe
-                    dup2(pipefds[i - 1][0], 0);
-                }
-
-                // Close all pipe descriptors
-                for (int j = 0; j < num_cmds - 1; j++) {
-                    close(pipefds[j][0]);
-                    close(pipefds[j][1]);
+                    int pipefds[2];
+                    if (pipe(pipefds) < 0) {
+                        unix_error("pipe error");
+                    }
+                    // Set the PGID of the child to match the shell's PGID
+                    setpgid(0, 0);
+                    dup2(pipefds[1], 1);
+                    close(pipefds[0]);
                 }
 
                 execvp(argv[cmds[i]], &argv[cmds[i]]);
-                printf("%s: Command not found\n", argv[cmds[0]]);
+                printf("%s: Command not found\n", argv[cmds[0]);
                 exit(0);
             }
+
+            if (prev_pipe_read >= 0) {
+                close(prev_pipe_read);
+            }
+
+            prev_pipe_read = pipefds[0];
         }
 
         // Parent process
-        // Close all pipe descriptors
-        for (i = 0; i < num_cmds - 1; i++) {
-            close(pipefds[i][0]);
-            close(pipefds[i][1]);
-        }
+        close(prev_pipe_read);
 
         // Wait for all child processes to terminate
         for (i = 0; i < num_cmds; i++) {
