@@ -5,109 +5,146 @@
 #include <string.h>
 #include <sys/socket.h>
 #include <netdb.h>
+#include <arpa/inet.h>
+
 
 #define BUF_SIZE 500
 
 int main(int argc, char *argv[]) {
-	int portindex;
-	unsigned short port;
-	int address_family;
-	int sock_type;
-	struct sockaddr_in ipv4addr;
-	struct sockaddr_in6 ipv6addr;
 
-	int sfd;
-	int s;
-	struct sockaddr_storage remote_addr;
-	struct sockaddr *local_addr;
-	socklen_t local_addr_len, remote_addr_len;
+    /* Check usage */
+    if (!(argc == 2 || (argc == 3 &&
+                        (strcmp(argv[1], "-4") == 0 || strcmp(argv[1], "-6") == 0)))) {
+        fprintf(stderr, "Usage: %s [ -4 | -6 ] port\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
 
-	ssize_t nread;
-	char buf[BUF_SIZE];
+    int portindex;
+    if (argc == 2) {
+        portindex = 1;
+    } else {
+        portindex = 2;
+    }
 
-	/* Check usage */
-	if (!(argc == 2 || (argc == 3 &&
-			(strcmp(argv[1], "-4") == 0 || strcmp(argv[1], "-6") == 0)))) {
-		fprintf(stderr, "Usage: %s [ -4 | -6 ] port\n", argv[0]);
-		exit(EXIT_FAILURE);
-	}
-	if (argc == 2) {
-		portindex = 1;
-	} else {
-		portindex = 2;
-	}
+    /* Use IPv4 by default (or if -4 is specified);
+     * If -6 is specified, then use IPv6 instead. */
+    int addr_fam;
+    if (argc == 2 || strcmp(argv[1], "-4") == 0) {
+        addr_fam = AF_INET;
+    } else {
+        addr_fam = AF_INET6;
+    }
 
-	/* Use IPv4 by default (or if -4 is specified);
-	 * If -6 is specified, then use IPv6 instead. */
-	if (argc == 2 || strcmp(argv[portindex], "-4") == 0) {
-		address_family = AF_INET;
-	} else {
-		address_family = AF_INET6;
-	}
-
-	port = atoi(argv[portindex]);
-	sock_type = SOCK_DGRAM;
+    unsigned short port = atoi(argv[portindex]);
+    int sock_type = SOCK_DGRAM;
 
 
-	/* SECTION A - populate address structures */
+    /* SECTION A - populate address structures */
 
-	if (address_family == AF_INET) {
-		ipv4addr.sin_family = address_family;
-		ipv4addr.sin_addr.s_addr = INADDR_ANY; // listen on any/all IPv4 addresses
-		ipv4addr.sin_port = htons(port);       // specify port explicitly, in network byte order
+    struct sockaddr_in ipv4addr;
+    struct sockaddr_in6 ipv6addr;
 
-		// Assign local_addr and local_addr_len to ipv4addr
-		local_addr = (struct sockaddr *)&ipv4addr;
-		local_addr_len = sizeof(ipv4addr);
-	} else { // address_family == AF_INET6
-		ipv6addr.sin6_family = address_family;
-		ipv6addr.sin6_addr = in6addr_any;     // listen on any/all IPv6 addresses
-		ipv6addr.sin6_port = htons(port);     // specify port explicitly, in network byte order
+    /* Variables associated with local address and port */
+    struct sockaddr *local_addr;
+    socklen_t addr_len;
 
-		// Assign local_addr and local_addr_len to ipv6addr
-		local_addr = (struct sockaddr *)&ipv6addr;
-		local_addr_len = sizeof(ipv6addr);
-	}
+    if (addr_fam == AF_INET) {
+        /* We are using IPv4. */
+        /* Populate ipv4addr with the appropriate family, address
+         * (listen on all addresses), and port */
+        ipv4addr.sin_family = addr_fam;
+        ipv4addr.sin_addr.s_addr = INADDR_ANY; // listen on any/all IPv4 addresses
+        ipv4addr.sin_port = htons(port);       // specify port explicitly, in network byte order
+
+        /* Point local_port to the structure associated with IPv4, and
+         * assign addr_len to the size of the ipv6addr structure.
+         * */
+        local_addr = (struct sockaddr *)&ipv4addr;
+        addr_len = sizeof(ipv4addr);
+    } else { // addr_fam == AF_INET6
+        /* We are using IPv6. */
+        /* Populate ipv6addr with the appropriate family, address
+         * (listen on all addresses), and port */
+        ipv6addr.sin6_family = addr_fam;
+        ipv6addr.sin6_addr = in6addr_any;     // listen on any/all IPv6 addresses
+        ipv6addr.sin6_port = htons(port);     // specify port explicitly, in network byte order
+
+        /* Point local_port to the structure associated with IPv6, and
+         * assign addr_len to the size of the ipv6addr structure.
+         * */
+        local_addr = (struct sockaddr *)&ipv6addr;
+        addr_len = sizeof(ipv6addr);
+    }
 
 
-	/* SECTION B - setup socket */
+    /* SECTION B - setup socket */
 
-	if ((sfd = socket(address_family, sock_type, 0)) < -1) {
-		perror("Error creating socket");
-		exit(EXIT_FAILURE);
-	}
-	if (bind(sfd, local_addr, local_addr_len) < 0) {
-		perror("Could not bind");
-		exit(EXIT_FAILURE);
-	}
+    int sfd;
+    if ((sfd = socket(addr_fam, sock_type, 0)) < -1) {
+        perror("Error creating socket");
+        exit(EXIT_FAILURE);
+    }
+    if (bind(sfd, local_addr, addr_len) < 0) {
+        perror("Could not bind");
+        exit(EXIT_FAILURE);
+    }
 
 
-	/* SECTION C - interact with clients; receive and send messages */
+    /* SECTION C - interact with clients; receive and send messages */
 
-	/* Read datagrams and echo them back to sender */
+    /* Read datagrams and echo them back to sender */
 
-	for (;;) {
-		remote_addr_len = sizeof(struct sockaddr_storage);
-		nread = recvfrom(sfd, buf, BUF_SIZE, 0,
-				(struct sockaddr *) &remote_addr, &remote_addr_len);
-		if (nread == -1)
-			continue;   /* Ignore failed request */
+    for (;;) {
+        char buf[BUF_SIZE];
 
-		char host[NI_MAXHOST], service[NI_MAXSERV];
+        /* Variables associated with remote address and port */
+        struct sockaddr_in remote_addr_in;
+        struct sockaddr_in6 remote_addr_in6;
+        struct sockaddr *remote_addr;
+        char remote_addr_str[INET6_ADDRSTRLEN];
+        unsigned short remote_port;
 
-		s = getnameinfo((struct sockaddr *) &remote_addr,
-						remote_addr_len, host, NI_MAXHOST,
-						service, NI_MAXSERV, NI_NUMERICSERV | NI_NUMERICHOST);
-	
-		if (s == 0)
-			printf("Received %zd bytes from %s:%s\n",
-					nread, host, service);
-		else
-			fprintf(stderr, "getnameinfo: %s\n", gai_strerror(s));
+        if (addr_fam == AF_INET) {
+            remote_addr = (struct sockaddr *)&remote_addr_in;
+        } else {
+            remote_addr = (struct sockaddr *)&remote_addr_in6;
+        }
 
-		if (sendto(sfd, buf, nread, 0,
-					(struct sockaddr *) &remote_addr,
-					remote_addr_len) < 0)
-			fprintf(stderr, "Error sending response\n");
-	}
+        /* addrlen needs to be initialized before the call to
+         * recvfrom().  See the man page for recvfrom(). */
+        addr_len = sizeof(struct sockaddr_storage);
+        ssize_t nread = recvfrom(sfd, buf, BUF_SIZE, 0,
+                                 remote_addr, &addr_len);
+        if (nread == -1)
+            continue;   /* Ignore failed request */
+
+        if (addr_fam == AF_INET) {
+            remote_addr_in = *(struct sockaddr_in *)remote_addr;
+            /* Populate remote_addr_str (a string) with the
+             * presentation format of the IPv4 address.*/
+            inet_ntop(addr_fam, &remote_addr_in.sin_addr,
+                      remote_addr_str, INET6_ADDRSTRLEN);
+            /* Populate remote_port with the value of the port, in
+             * host byte order (as opposed to network byte order).
+             * */
+            remote_port = ntohs(remote_addr_in.sin_port);
+        } else {
+            remote_addr_in6 = *(struct sockaddr_in6 *)remote_addr;
+            /* Populate remote_addr_str (a string) with the
+             * presentation format of the IPv6 address.*/
+            inet_ntop(addr_fam, &remote_addr_in6.sin6_addr,
+                      remote_addr_str, INET6_ADDRSTRLEN);
+            /* Populate remote_port with the value of the port, in
+             * host byte order (as opposed to network byte order).
+             * */
+            remote_port = ntohs(remote_addr_in6.sin6_port);
+        }
+        printf("Received %zd bytes from %s:%d\n",
+               nread, remote_addr_str, remote_port);
+
+        if (sendto(sfd, buf, nread, 0,
+                   remote_addr,
+                   addr_len) < 0)
+            fprintf(stderr, "Error sending response\n");
+    }
 }
