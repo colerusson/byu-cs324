@@ -114,7 +114,7 @@ void eval(char *cmdline) {
     char *argv[MAXARGS];
     int status;
     pid_t pid;
-    int pgid = 0; // Process group ID
+    int pipefds[2]; // File descriptors for the pipe
 
     parseline(cmdline, argv);
     if (argv[0] == NULL) {
@@ -166,6 +166,10 @@ void eval(char *cmdline) {
         int prev_pipe_read = -1; // Previous pipe's read end
 
         for (i = 0; i < num_cmds; i++) {
+            if (pipe(pipefds) < 0) {
+                unix_error("pipe error");
+            }
+
             if ((pid = fork()) == 0) {
                 // Child process
                 // Set the PGID for the child to match the shell's PGID
@@ -189,7 +193,6 @@ void eval(char *cmdline) {
                 }
 
                 if (i < num_cmds - 1) {
-                    int pipefds[2];
                     if (pipe(pipefds) < 0) {
                         unix_error("pipe error");
                     }
@@ -200,7 +203,7 @@ void eval(char *cmdline) {
                 }
 
                 execvp(argv[cmds[i]], &argv[cmds[i]]);
-                printf("%s: Command not found\n", argv[cmds[0]);
+                printf("%s: Command not found\n", argv[cmds[i]]);
                 exit(0);
             }
 
@@ -208,6 +211,7 @@ void eval(char *cmdline) {
                 close(prev_pipe_read);
             }
 
+            close(pipefds[1]);
             prev_pipe_read = pipefds[0];
         }
 
@@ -222,6 +226,7 @@ void eval(char *cmdline) {
         }
     }
 }
+
 
 //void eval(char *cmdline) {
 //    char *argv[MAXARGS];
