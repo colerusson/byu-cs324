@@ -228,10 +228,10 @@ int main(int argc, char *argv[]) {
 		}
 
 		//ssize_t nread = read(sfd, buf, BUF_SIZE);
-		if (nread == -1) {
-			perror("read");
-			exit(EXIT_FAILURE);
-		}
+//		if (nread == -1) {
+//			perror("read");
+//			exit(EXIT_FAILURE);
+//		}
 
 		//printf("Received %zd bytes: %s\n", nread, buf);
 
