@@ -211,59 +211,27 @@ int main(int argc, char *argv[]) {
 	 * local_addr_str: string representation of local IP address
 	 * local_port: the local port
 	 * */
-	s = getsockname(sfd, local_addr, &addr_len);
-	if (addr_fam == AF_INET) {
-		/* Populate local_addr_str (a string) with the
-		 * presentation format of the IPv4 address.*/
-		inet_ntop(addr_fam, &local_addr_in.sin_addr,
-				local_addr_str, INET6_ADDRSTRLEN);
-		/* Populate local_port with the value of the port, in host byte
-		 * order (as opposed to network byte order). */
-		local_port = ntohs(local_addr_in.sin_port);
-	} else {
-		/* Populate local_addr_str (a string) with the
-		 * presentation format of the IPv6 address.*/
-		inet_ntop(addr_fam, &local_addr_in6.sin6_addr,
-				local_addr_str, INET6_ADDRSTRLEN);
-		/* Populate local_port with the value of the port, in host byte
-		 * order (as opposed to network byte order). */
-		local_port = ntohs(local_addr_in6.sin6_port);
-	}
-	fprintf(stderr, "Local socket info: %s:%d (family: %d, len: %d)\n",
-			local_addr_str, local_port, addr_fam,
-			addr_len);
-
-
-	/* SECTION C - interact with server; send, receive, print messages */
-
-	/* Send remaining command-line arguments as separate
-	   datagrams, and read responses from server */
-
-//	for (int j = hostindex + 2; j < argc; j++) {
-//		char buf[BUF_SIZE];
-//		size_t len = strlen(argv[j]) + 1;
-//		/* +1 for terminating null byte */
-//
-//		if (len + 1 > BUF_SIZE) {
-//			fprintf(stderr,
-//					"Ignoring long message in argument %d\n", j);
-//			continue;
-//		}
-//
-//		if (write(sfd, argv[j], len) != len) {
-//			fprintf(stderr, "partial/failed write\n");
-//			exit(EXIT_FAILURE);
-//		}
-//
-//		ssize_t nread = read(sfd, buf, BUF_SIZE);
-//		if (nread == -1) {
-//			perror("read");
-//			exit(EXIT_FAILURE);
-//		}
-//
-//		printf("Received %zd bytes: %s\n", nread, buf);
-//
+//	s = getsockname(sfd, local_addr, &addr_len);
+//	if (addr_fam == AF_INET) {
+//		/* Populate local_addr_str (a string) with the
+//		 * presentation format of the IPv4 address.*/
+//		inet_ntop(addr_fam, &local_addr_in.sin_addr,
+//				local_addr_str, INET6_ADDRSTRLEN);
+//		/* Populate local_port with the value of the port, in host byte
+//		 * order (as opposed to network byte order). */
+//		local_port = ntohs(local_addr_in.sin_port);
+//	} else {
+//		/* Populate local_addr_str (a string) with the
+//		 * presentation format of the IPv6 address.*/
+//		inet_ntop(addr_fam, &local_addr_in6.sin6_addr,
+//				local_addr_str, INET6_ADDRSTRLEN);
+//		/* Populate local_port with the value of the port, in host byte
+//		 * order (as opposed to network byte order). */
+//		local_port = ntohs(local_addr_in6.sin6_port);
 //	}
+//	fprintf(stderr, "Local socket info: %s:%d (family: %d, len: %d)\n",
+//			local_addr_str, local_port, addr_fam,
+//			addr_len);
 
 	exit(EXIT_SUCCESS);
 }
