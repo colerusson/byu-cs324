@@ -113,10 +113,10 @@ int main(int argc, char *argv[]) {
 		/* addrlen needs to be initialized before the call to
 		 * recvfrom().  See the man page for recvfrom(). */
 		addr_len = sizeof(struct sockaddr_storage);
-        printf("before recvfrom\n"); fflush(stdout);
+        //printf("before recvfrom\n"); fflush(stdout);
 		ssize_t nread = recvfrom(sfd, buf, BUF_SIZE, 0,
 				remote_addr, &addr_len);
-        printf("after recvfrom\n"); fflush(stdout);
+        //printf("after recvfrom\n"); fflush(stdout);
 		if (nread == -1)
 			continue;   /* Ignore failed request */
 
