@@ -114,7 +114,7 @@ int main(int argc, char *argv[]) {
 		 * recvfrom().  See the man page for recvfrom(). */
 		addr_len = sizeof(struct sockaddr_storage);
         //printf("before recvfrom\n"); fflush(stdout);
-		ssize_t nread = recvfrom(sfd, buf, BUF_SIZE, 0,
+		ssize_t nread = recvfrom(sfd, buf, 1, 0,
 				remote_addr, &addr_len);
         //printf("after recvfrom\n"); fflush(stdout);
         sleep(5);
