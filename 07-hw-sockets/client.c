@@ -162,6 +162,32 @@ int main(int argc, char *argv[]) {
 		close(sfd);
 	}
 
+    //** New Code Here **//
+    unsigned char buffer[512];  // Set your desired chunk size (e.g., 512 bytes)
+    ssize_t bytesRead;
+    ssize_t totalBytesRead = 0;
+
+    // Read input from standard input into the buffer until EOF is reached or max total bytes (4096) is read.
+    while (totalBytesRead < 4096 && (bytesRead = read(STDIN_FILENO, buffer, sizeof(buffer))) > 0) {
+        totalBytesRead += bytesRead;
+
+        // Send the data from the buffer to the connected socket in chunks (e.g., 512 bytes).
+        ssize_t bytesSent;
+        ssize_t totalBytesSent = 0;
+
+        while (totalBytesSent < bytesRead) {
+            bytesSent = write(sfd, buffer + totalBytesSent, bytesRead - totalBytesSent);
+            if (bytesSent == -1) {
+                perror("write");
+                exit(EXIT_FAILURE);
+            }
+            totalBytesSent += bytesSent;
+        }
+    }
+
+    fprintf(stderr, "Total bytes sent: %zd\n", totalBytesRead);
+    //** New Code Here **//
+
 	if (rp == NULL) {   /* No address succeeded */
 		fprintf(stderr, "Could not connect\n");
 		exit(EXIT_FAILURE);
@@ -210,22 +236,22 @@ int main(int argc, char *argv[]) {
 	/* Send remaining command-line arguments as separate
 	   datagrams, and read responses from server */
 
-	for (int j = hostindex + 2; j < argc; j++) {
-		char buf[BUF_SIZE];
-		size_t len = strlen(argv[j]) + 1;
-		/* +1 for terminating null byte */
-
-		if (len + 1 > BUF_SIZE) {
-			fprintf(stderr,
-					"Ignoring long message in argument %d\n", j);
-			continue;
-		}
-
-		if (write(sfd, argv[j], len) != len) {
-			fprintf(stderr, "partial/failed write\n");
-			exit(EXIT_FAILURE);
-		}
-
+//	for (int j = hostindex + 2; j < argc; j++) {
+//		char buf[BUF_SIZE];
+//		size_t len = strlen(argv[j]) + 1;
+//		/* +1 for terminating null byte */
+//
+//		if (len + 1 > BUF_SIZE) {
+//			fprintf(stderr,
+//					"Ignoring long message in argument %d\n", j);
+//			continue;
+//		}
+//
+//		if (write(sfd, argv[j], len) != len) {
+//			fprintf(stderr, "partial/failed write\n");
+//			exit(EXIT_FAILURE);
+//		}
+//
 //		ssize_t nread = read(sfd, buf, BUF_SIZE);
 //		if (nread == -1) {
 //			perror("read");
@@ -233,8 +259,8 @@ int main(int argc, char *argv[]) {
 //		}
 //
 //		printf("Received %zd bytes: %s\n", nread, buf);
-
-	}
+//
+//	}
 
 	exit(EXIT_SUCCESS);
 }
