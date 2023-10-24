@@ -163,29 +163,32 @@ int main(int argc, char *argv[]) {
 	}
 
     //** New Code Here **//
-    unsigned char buffer[512];  // Set your desired chunk size (e.g., 512 bytes)
-    ssize_t bytesRead;
-    ssize_t totalBytesRead = 0;
+    // After all data from standard input has been sent, receive data from the socket
+    unsigned char recvBuffer[512];  // Set your desired chunk size (e.g., 512 bytes)
+    ssize_t bytesReceived;
+    ssize_t totalBytesReceived = 0;
 
-    // Read input from standard input into the buffer until EOF is reached or max total bytes (4096) is read.
-    while (totalBytesRead < 4096 && (bytesRead = read(STDIN_FILENO, buffer, sizeof(buffer))) > 0) {
-        totalBytesRead += bytesRead;
+    // Read data from the socket into the buffer until the remote host closes its socket (EOF or 16384 bytes).
+    while (totalBytesReceived < 16384 && (bytesReceived = read(sfd, recvBuffer, sizeof(recvBuffer))) > 0) {
+        totalBytesReceived += bytesReceived;
 
-        // Send the data from the buffer to the connected socket in chunks (e.g., 512 bytes).
-        ssize_t bytesSent;
-        ssize_t totalBytesSent = 0;
+        // Process or write the received data as needed
+        // For example, you can write it to standard output
+        ssize_t bytesWritten;
+        ssize_t totalBytesWritten = 0;
 
-        while (totalBytesSent < bytesRead) {
-            bytesSent = write(sfd, buffer + totalBytesSent, bytesRead - totalBytesSent);
-            if (bytesSent == -1) {
+        while (totalBytesWritten < bytesReceived) {
+            bytesWritten = write(STDOUT_FILENO, recvBuffer + totalBytesWritten, bytesReceived - totalBytesWritten);
+            if (bytesWritten == -1) {
                 perror("write");
                 exit(EXIT_FAILURE);
             }
-            totalBytesSent += bytesSent;
+            totalBytesWritten += bytesWritten;
         }
     }
 
-    fprintf(stderr, "Total bytes sent: %zd\n", totalBytesRead);
+    fprintf(stderr, "Total bytes received: %zd\n", totalBytesReceived);
+    // End of new code
     //** New Code Here **//
 
 	if (rp == NULL) {   /* No address succeeded */
