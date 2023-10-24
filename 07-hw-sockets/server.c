@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
              * recvfrom().  See the man page for recvfrom(). */
             addr_len = sizeof(struct sockaddr_storage);
             //printf("before recvfrom\n"); fflush(stdout);
-            ssize_t nread = recv(cfd, buf, BUF_SIZE, 0);
+            ssize_t nread = recv(cfd, buf, 1, 0);
             //printf("after recvfrom\n"); fflush(stdout);
             //sleep(5);
             if (nread == -1)
