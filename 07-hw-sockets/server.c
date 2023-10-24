@@ -117,6 +117,7 @@ int main(int argc, char *argv[]) {
 		ssize_t nread = recvfrom(sfd, buf, BUF_SIZE, 0,
 				remote_addr, &addr_len);
         //printf("after recvfrom\n"); fflush(stdout);
+        sleep(5);
 		if (nread == -1)
 			continue;   /* Ignore failed request */
 
