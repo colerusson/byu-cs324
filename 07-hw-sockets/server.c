@@ -99,6 +99,7 @@ int main(int argc, char *argv[]) {
         struct sockaddr_storage client_addr;
         socklen_t client_addr_len = sizeof(struct sockaddr_storage);
         int cfd = accept(sfd, (struct sockaddr *)&client_addr, &client_addr_len);
+        sleep(5);
         if (cfd < 0) {
             perror("Accept failed");
             exit(EXIT_FAILURE);
