@@ -42,7 +42,7 @@ int main(int argc, char *argv[]) {
 	memset(&hints, 0, sizeof(struct addrinfo));
 	hints.ai_family = af;    /* Allow IPv4, IPv6, or both, depending on
 				    what was specified on the command line. */
-	hints.ai_socktype = SOCK_DGRAM; /* Datagram socket */
+	hints.ai_socktype = SOCK_STREAM; /* Datagram socket */
 	hints.ai_flags = 0;
 	hints.ai_protocol = 0;  /* Any protocol */
 
@@ -156,7 +156,7 @@ int main(int argc, char *argv[]) {
 
 		/* if connect is successful, then break out of the loop; we
 		 * will use the current address */
-		//if (connect(sfd, remote_addr, addr_len) != -1)
+		if (connect(sfd, remote_addr, addr_len) != -1)
 			break;  /* Success */
 
 		close(sfd);
@@ -221,19 +221,18 @@ int main(int argc, char *argv[]) {
 			continue;
 		}
 
-		//if (write(sfd, argv[j], len) != len) {
-        if (sendto(sfd, argv[j], len, 0, remote_addr, addr_len) != len) {
+		if (write(sfd, argv[j], len) != len) {
 			fprintf(stderr, "partial/failed write\n");
 			exit(EXIT_FAILURE);
 		}
 
-		//ssize_t nread = read(sfd, buf, BUF_SIZE);
-//		if (nread == -1) {
-//			perror("read");
-//			exit(EXIT_FAILURE);
-//		}
+		ssize_t nread = read(sfd, buf, BUF_SIZE);
+		if (nread == -1) {
+			perror("read");
+			exit(EXIT_FAILURE);
+		}
 
-		//printf("Received %zd bytes: %s\n", nread, buf);
+		printf("Received %zd bytes: %s\n", nread, buf);
 
 	}
 
