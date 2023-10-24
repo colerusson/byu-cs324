@@ -156,7 +156,7 @@ int main(int argc, char *argv[]) {
 
 		/* if connect is successful, then break out of the loop; we
 		 * will use the current address */
-		if (connect(sfd, remote_addr, addr_len) != -1)
+		//if (connect(sfd, remote_addr, addr_len) != -1)
 			break;  /* Success */
 
 		close(sfd);
@@ -221,7 +221,8 @@ int main(int argc, char *argv[]) {
 			continue;
 		}
 
-		if (write(sfd, argv[j], len) != len) {
+		//if (write(sfd, argv[j], len) != len) {
+        if (sendto(sfd, argv[j], len, 0, remote_addr, addr_len) != len) {
 			fprintf(stderr, "partial/failed write\n");
 			exit(EXIT_FAILURE);
 		}
