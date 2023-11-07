@@ -20,11 +20,22 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Parse command line arguments
     char *server = argv[1];
     int port = atoi(argv[2]);
+    int level = atoi(argv[3]);
+    int seed = atoi(argv[4]);
 
-    // Create an 8-byte message buffer as in previous steps
+    // Create an 8-byte message buffer as required
+    unsigned char message[8];
+
+    // Fill in the message buffer with the specified format
+    message[0] = 0; // Byte 0
+    message[1] = (unsigned char)level; // Byte 1, level as an integer between 0 and 4
+    *((unsigned int *)&message[2]) = htonl(USERID); // Bytes 2 - 5, user ID in network byte order
+    *((unsigned short *)&message[6]) = htons((unsigned short)seed); // Bytes 6 - 7, seed in network byte order
+
+    // Print the message using print_bytes
+    print_bytes(message, 8);
 
     // Set up socket variables
     int sockfd;
@@ -57,6 +68,11 @@ int main(int argc, char *argv[]) {
     }
 
     // Send the message to the server using sendto as before
+    ssize_t bytes_sent = sendto(sockfd, message, 8, 0, p->ai_addr, p->ai_addrlen);
+    if (bytes_sent == -1) {
+        perror("sendto");
+        return 4;
+    }
 
     // Receive the server's response using recvfrom
     unsigned char response[256]; // Max response size is 256 bytes
@@ -66,7 +82,7 @@ int main(int argc, char *argv[]) {
     ssize_t bytes_received = recvfrom(sockfd, response, sizeof(response), 0, (struct sockaddr *)&their_addr, &addr_len);
     if (bytes_received == -1) {
         perror("recvfrom");
-        return 4;
+        return 5;
     }
 
     // Process the response and extract the fields as before
