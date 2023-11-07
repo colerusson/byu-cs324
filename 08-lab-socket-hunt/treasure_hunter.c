@@ -3,6 +3,12 @@
 #define USERID 1823702742
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
 int verbose = 0;
 
@@ -17,28 +23,64 @@ int main(int argc, char *argv[]) {
     // Parse command line arguments
     char *server = argv[1];
     int port = atoi(argv[2]);
-    int level = atoi(argv[3]);
-    int seed = atoi(argv[4]);
 
     // Create an 8-byte message buffer
     unsigned char message[8];
 
-    // Byte 0: 0
-    message[0] = 0;
+    // Set up socket variables
+    int sockfd;
+    struct addrinfo hints, *serverinfo, *p;
 
-    // Byte 1: Level (0 to 4)
-    message[1] = (unsigned char)level;
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_INET; // Use IPv4
+    hints.ai_socktype = SOCK_DGRAM; // Use UDP
 
-    // Bytes 2-5: User ID (in network byte order)
-    unsigned int userid_network = htonl(USERID);
-    memcpy(&message[2], &userid_network, 4);
+    char port_str[6];
+    snprintf(port_str, sizeof(port_str), "%d", port);
 
-    // Bytes 6-7: Seed (in network byte order)
-    unsigned short seed_network = htons(seed);
-    memcpy(&message[6], &seed_network, 2);
+    if (getaddrinfo(server, port_str, &hints, &serverinfo) != 0) {
+        perror("getaddrinfo");
+        return 1;
+    }
 
-    // Print the message in the desired format
-    print_bytes(message, 8);
+    // Iterate through the results and bind to the first suitable socket
+    for (p = serverinfo; p != NULL; p = p->ai_next) {
+        if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+            perror("socket");
+            continue;
+        }
+        break;
+    }
+
+    if (p == NULL) {
+        fprintf(stderr, "Failed to create socket\n");
+        return 2;
+    }
+
+    // Send the message to the server using sendto
+    ssize_t bytes_sent = sendto(sockfd, message, 8, 0, p->ai_addr, p->ai_addrlen);
+    if (bytes_sent == -1) {
+        perror("sendto");
+        return 3;
+    }
+
+    // Receive the server's response using recvfrom
+    unsigned char response[256]; // Max response size is 256 bytes
+    struct sockaddr_storage their_addr;
+    socklen_t addr_len = sizeof their_addr;
+
+    ssize_t bytes_received = recvfrom(sockfd, response, sizeof(response), 0, (struct sockaddr *)&their_addr, &addr_len);
+    if (bytes_received == -1) {
+        perror("recvfrom");
+        return 4;
+    }
+
+    // Print the received message
+    print_bytes(response, bytes_received);
+
+    // Clean up and close the socket
+    freeaddrinfo(serverinfo);
+    close(sockfd); // Make sure to include the necessary include for close()
 
     return 0;
 }
