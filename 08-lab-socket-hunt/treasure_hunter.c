@@ -1,7 +1,6 @@
 // Replace PUT_USERID_HERE with your actual BYU CS user id, which you can find
 // by running `id -u` on a CS lab machine.
-//#define USERID 1823702742
-#define USERID 123456789
+#define USERID 1823702742
 
 #include <stdio.h>
 
