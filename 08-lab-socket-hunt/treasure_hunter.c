@@ -67,11 +67,12 @@ int main(int argc, char *argv[]) {
         return 3;
     }
 
-    // Send the message to the server using sendto as before
+    // Send the initial request message to the server
     ssize_t bytes_sent = sendto(sockfd, message, 8, 0, p->ai_addr, p->ai_addrlen);
     if (bytes_sent == -1) {
         perror("sendto");
-        close(sockfd); // Close the socket on error
+        close(sockfd);
+        freeaddrinfo(serverinfo);
         return 4;
     }
 
@@ -83,15 +84,31 @@ int main(int argc, char *argv[]) {
     ssize_t bytes_received = recvfrom(sockfd, response, sizeof(response), 0, (struct sockaddr *)&their_addr, &addr_len);
     if (bytes_received == -1) {
         perror("recvfrom");
-        close(sockfd); // Close the socket on error
+        close(sockfd);
+        freeaddrinfo(serverinfo);
         return 5;
     }
 
-    // Process the response and extract the fields as before
+    // Process the response and extract the fields as specified in the specs
+    unsigned char opcode = response[0];
+    unsigned char status = response[1];
+    unsigned short portnum = ntohs(*((unsigned short *)&response[2]));
+    unsigned int ipaddr = ntohl(*((unsigned int *)&response[4]));
+
+    // Print the response using print_bytes
+    print_bytes(response, bytes_received);
+
+    // Print the response fields
+    printf("opcode: %d\n", opcode);
+    printf("status: %d\n", status);
+    printf("portnum: %d\n", portnum);
+    printf("ipaddr: %d\n", ipaddr);
+
+    // You need to implement the logic for parsing the response, handling op-codes, and more.
 
     // Clean up and close the socket
-    freeaddrinfo(serverinfo);
     close(sockfd);
+    freeaddrinfo(serverinfo);
 
     return 0;
 }
