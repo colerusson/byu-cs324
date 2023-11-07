@@ -9,19 +9,38 @@ int verbose = 0;
 void print_bytes(unsigned char *bytes, int byteslen);
 
 int main(int argc, char *argv[]) {
-    // store command line arguments in variables - server, port, level, and seed
+    if (argc != 5) {
+        fprintf(stderr, "Usage: %s <server> <port> <level> <seed>\n", argv[0]);
+        return 1;
+    }
+
+    // Parse command line arguments
     char *server = argv[1];
     int port = atoi(argv[2]);
-    // also store the port as a string, since we'll need it later
-    char port_str[6];
     int level = atoi(argv[3]);
     int seed = atoi(argv[4]);
 
-    // print out the command line arguments
-    printf("server: %s\n", server);
-    printf("port: %d\n", port);
-    printf("level: %d\n", level);
-    printf("seed: %d\n", seed);
+    // Create an 8-byte message buffer
+    unsigned char message[8];
+
+    // Byte 0: 0
+    message[0] = 0;
+
+    // Byte 1: Level (0 to 4)
+    message[1] = (unsigned char)level;
+
+    // Bytes 2-5: User ID (in network byte order)
+    unsigned int userid_network = htonl(USERID);
+    memcpy(&message[2], &userid_network, 4);
+
+    // Bytes 6-7: Seed (in network byte order)
+    unsigned short seed_network = htons(seed);
+    memcpy(&message[6], &seed_network, 2);
+
+    // Print the message in the desired format
+    print_bytes(message, 8);
+
+    return 0;
 }
 
 void print_bytes(unsigned char *bytes, int byteslen) {
