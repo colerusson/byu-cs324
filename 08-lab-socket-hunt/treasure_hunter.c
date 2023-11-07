@@ -24,8 +24,7 @@ int main(int argc, char *argv[]) {
     char *server = argv[1];
     int port = atoi(argv[2]);
 
-    // Create an 8-byte message buffer
-    unsigned char message[8];
+    // Create an 8-byte message buffer as in previous steps
 
     // Set up socket variables
     int sockfd;
@@ -40,7 +39,7 @@ int main(int argc, char *argv[]) {
 
     if (getaddrinfo(server, port_str, &hints, &serverinfo) != 0) {
         perror("getaddrinfo");
-        return 1;
+        return 2;
     }
 
     // Iterate through the results and bind to the first suitable socket
@@ -54,15 +53,10 @@ int main(int argc, char *argv[]) {
 
     if (p == NULL) {
         fprintf(stderr, "Failed to create socket\n");
-        return 2;
-    }
-
-    // Send the message to the server using sendto
-    ssize_t bytes_sent = sendto(sockfd, message, 8, 0, p->ai_addr, p->ai_addrlen);
-    if (bytes_sent == -1) {
-        perror("sendto");
         return 3;
     }
+
+    // Send the message to the server using sendto as before
 
     // Receive the server's response using recvfrom
     unsigned char response[256]; // Max response size is 256 bytes
@@ -75,12 +69,11 @@ int main(int argc, char *argv[]) {
         return 4;
     }
 
-    // Print the received message
-    print_bytes(response, bytes_received);
+    // Process the response and extract the fields as before
 
     // Clean up and close the socket
     freeaddrinfo(serverinfo);
-    close(sockfd); // Make sure to include the necessary include for close()
+    close(sockfd);
 
     return 0;
 }
