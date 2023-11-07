@@ -71,6 +71,7 @@ int main(int argc, char *argv[]) {
     ssize_t bytes_sent = sendto(sockfd, message, 8, 0, p->ai_addr, p->ai_addrlen);
     if (bytes_sent == -1) {
         perror("sendto");
+        close(sockfd); // Close the socket on error
         return 4;
     }
 
@@ -82,6 +83,7 @@ int main(int argc, char *argv[]) {
     ssize_t bytes_received = recvfrom(sockfd, response, sizeof(response), 0, (struct sockaddr *)&their_addr, &addr_len);
     if (bytes_received == -1) {
         perror("recvfrom");
+        close(sockfd); // Close the socket on error
         return 5;
     }
 
