@@ -102,7 +102,6 @@ int main(int argc, char *argv[]) {
     switch (op_code) {
         case 0:
             // Handle op-code 0 (communicate with the server as you did previously)
-            response = getServersResponse(level_response, nonce, sockfd, p, their_addr, addr_len);
             break;
         case 1:
             // Handle op-code 1 (communicate with a new remote server-side port)
