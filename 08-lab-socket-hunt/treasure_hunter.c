@@ -1,33 +1,33 @@
+// Replace PUT_USERID_HERE with your actual BYU CS user id, which you can find
+// by running `id -u` on a CS lab machine.
+#define USERID 1823702742
+#define BUFSIZE 8
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
-#define USERID 1823702742
-#define BUFSIZE 8
 
 int verbose = 0;
 int IPv4Socket = 2;
 int IPv6Socket = 2;
-int SERVER_PORT = 8080;
-int SELF_PORT = 8080;
 int IPV = AF_INET;
+int SELF_PORT = 8080;
 
-int addr_fam;
+
 socklen_t addr_len;
-
 struct sockaddr_in remote_addr_in;
 struct sockaddr_in6 remote_addr_in6;
 struct sockaddr *remote_addr;
-
 struct sockaddr_in local_addr_in;
 struct sockaddr_in6 local_addr_in6;
 struct sockaddr *local_addr;
 
-
-struct ParsedMessage {
+struct RequestMessage {
     unsigned char errorNumber, huntOver;
     unsigned char opCode;
     unsigned char chunkLen;
@@ -38,45 +38,50 @@ struct ParsedMessage {
 
 void print_bytes(unsigned char *bytes, int byteslen);
 void initRequest(int level, int seed, unsigned char *request);
-void changeServerPort(unsigned short port);
 void changeLocalPort(unsigned short port);
-void updateNonce(struct ParsedMessage *pMessage);
-void swapIPv();
+void updateNonce(struct RequestMessage *rMessage);
 void sendMessage(unsigned char* message, int length, char* address);
 int receiveMessage(unsigned char *buf, char* address);
 void makeIPv4Socket();
 void makeIPv6Socket();
 char* errorToString(int errorNum);
-void parseResponse(unsigned char message[256], struct ParsedMessage *pMessage);
+void parseResponse(unsigned char message[256], struct RequestMessage *rMessage);
 void addTreasureChunk(unsigned char chunk[], unsigned char len, unsigned char treasure[256], int *treasureLength);
 
 int main(int argc, char *argv[]) {
-    // parse command args
+    // get the command arguments for server, port, level, and seed
     char *server = argv[1];
-    int seed, level;
-    SERVER_PORT  = atoi(argv[2]);
-    level = atoi(argv[3]);
-    seed  = atoi(argv[4]);
-    // create our request
-    unsigned char request[BUFSIZE];
-    struct ParsedMessage parsedMessage;
+    int port  = atoi(argv[2]);
+    int level = atoi(argv[3]);
+    int seed  = atoi(argv[4]);
 
+    // create the request
+    unsigned char request[BUFSIZE];
+    struct RequestMessage requestMessage;
+
+    // create the response
+    int treasureLength = 0;
     unsigned char message[256];
     unsigned char treasure[1024];
-    int treasureLength = 0;
 
+    // create the socket
     makeIPv4Socket();
     makeIPv6Socket();
     initRequest(level, seed, request);
+
+    // send the request
     int isFirst = 1;
     struct addrinfo hints, *addr;
     char portString[6];
+
+    // set the address info
     hints.ai_family = IPV;
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = 0;
     hints.ai_protocol = 0;
-    sprintf(portString, "%d", SERVER_PORT);
+    sprintf(portString, "%d", port);
 
+    // get the address info
     int result = getaddrinfo(server, portString, &hints, &addr);
     if (result != 0) {
         fprintf(stderr, "getaddrinfo failed: %s\n", gai_strerror(result));
@@ -87,17 +92,19 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    // set the remote address
     remote_addr_in = *((struct sockaddr_in *) addr->ai_addr);
     remote_addr = (struct sockaddr *) &remote_addr_in;
     local_addr = (struct sockaddr *) &local_addr_in;
     addr_len = sizeof(local_addr_in);
 
+    // send the request
     do {
         if (isFirst == 1) {
             sendMessage(request, BUFSIZE, server);
             isFirst = 0;
         } else {
-            uint32_t networkInt = parsedMessage.nonce;
+            uint32_t networkInt = requestMessage.nonce;
             uint32_t hostInt = ntohl(networkInt);
             hostInt += 1;
             networkInt = htonl(hostInt);
@@ -105,51 +112,51 @@ int main(int argc, char *argv[]) {
             sendMessage((unsigned char *) &networkInt, 4, server);
         }
         receiveMessage(message, server);
-        parseResponse(message, &parsedMessage);
+        parseResponse(message, &requestMessage);
 
-        addTreasureChunk(parsedMessage.chunk, parsedMessage.chunkLen, treasure, &treasureLength);
-        switch (parsedMessage.opCode) {
+        addTreasureChunk(requestMessage.chunk, requestMessage.chunkLen, treasure, &treasureLength);
+        switch (requestMessage.opCode) {
             case 1: // new server port
-                remote_addr_in.sin_port = parsedMessage.param;
+                remote_addr_in.sin_port = requestMessage.param;
                 break;
             case 2: // new local port
-                changeLocalPort(parsedMessage.param);
+                changeLocalPort(requestMessage.param);
                 break;
             case 3: // update nonce
-                updateNonce(&parsedMessage);
-                break;
-            case 4: // switch IPV
-                swapIPv();
+                updateNonce(&requestMessage);
                 break;
         }
-    } while (parsedMessage.huntOver != 1);
+    } while (requestMessage.huntOver != 1);
     treasure[treasureLength] = 0;
     printf("%s\n", treasure);
 }
-void parseResponse(unsigned char message[256], struct ParsedMessage *pMessage) {
+
+void parseResponse(unsigned char message[256], struct RequestMessage *rMessage) {
     if (message[0] == 0) {
-        pMessage->huntOver = 1;
+        rMessage->huntOver = 1;
     }
-    pMessage->chunkLen = (unsigned char) message[0];
+    rMessage->chunkLen = (unsigned char) message[0];
     // error code
-    if (pMessage->chunkLen > 127) {
-        pMessage->errorNumber = (char) pMessage->chunkLen;
-        fprintf(stderr, "%s\n", errorToString(pMessage->errorNumber));
-        exit(pMessage->errorNumber);
+    if (rMessage->chunkLen > 127) {
+        rMessage->errorNumber = (char) rMessage->chunkLen;
+        fprintf(stderr, "%s\n", errorToString(rMessage->errorNumber));
+        exit(rMessage->errorNumber);
     }
     // chunk
-    memcpy(&(pMessage->chunk), &message[1], pMessage->chunkLen);
+    memcpy(&(rMessage->chunk), &message[1], rMessage->chunkLen);
     // opCode
-    pMessage->opCode = (char) message[pMessage->chunkLen + 1];
+    rMessage->opCode = (char) message[rMessage->chunkLen + 1];
     // param
-    memcpy(&(pMessage->param), &message[pMessage->chunkLen + 2], 2);
+    memcpy(&(rMessage->param), &message[rMessage->chunkLen + 2], 2);
     // nonce
-    memcpy(&(pMessage->nonce), &message[(int) pMessage->chunkLen + 4], 4);
+    memcpy(&(rMessage->nonce), &message[(int) rMessage->chunkLen + 4], 4);
 }
+
 void addTreasureChunk(unsigned char chunk[], unsigned char len, unsigned char treasure[256], int* treasureLength) {
     memcpy(treasure + *treasureLength, chunk, len);
     *treasureLength += len;
 }
+
 char* errorToString(int errorNum){
     switch (errorNum) {
         case 129:
@@ -176,31 +183,31 @@ char* errorToString(int errorNum){
 }
 
 
-void updateNonce(struct ParsedMessage *pMessage) {
-    unsigned short m = ntohs(pMessage->param);  // correct afaik
-    unsigned int total = 0;                     // correct type
-    struct sockaddr_in server_addr1;            // works
-    socklen_t addr_len1 = sizeof(server_addr1); // works
+void updateNonce(struct RequestMessage *rMessage) {
+    unsigned short m = ntohs(rMessage->param);
+    unsigned int total = 0;
+    struct sockaddr_in server_addr1;
+    socklen_t addr_len1 = sizeof(server_addr1);
     for (int i = 0; i < m; i++) {
         recvfrom(IPv4Socket, NULL, 0, 0, (struct sockaddr *)&server_addr1, &addr_len1);
-        unsigned short port = ntohs(server_addr1.sin_port); // appears to work idk how to know if it's the correct value though
-//        fprintf(stderr, "port = %d\n", port);
+        unsigned short port = ntohs(server_addr1.sin_port);
         total += port;
     }
-    pMessage->nonce = htonl(total);
+    rMessage->nonce = htonl(total);
 }
 
 void initRequest(int level, int seed, unsigned char *request) {
-    // set the value of our request to the following format
-    request[0] = 0;                     // set the first byte to 0
-    request[1] = level;                 // set the second byte to contain the 4-bit value of level in the most significant nibble
-    request[2] = (USERID >> 24) & 0xFF; // set the fourth byte to the most significant byte of USERID
-    request[3] = (USERID >> 16) & 0xFF; // set the fifth byte to the second most significant byte of USERID
-    request[4] = (USERID >> 8) & 0xFF;  // set the sixth byte to the second least significant byte of USERID
-    request[5] =  USERID & 0xFF;        // set the seventh byte to the least significant byte of USERID
-    request[6] = (seed >> 8) & 0xFF;    // set the eighth byte to the most significant byte of seed
-    request[7] =  seed & 0xFF;          // set the ninth byte to the least significant byte of seed
+    // set the value of the request to the following format
+    request[0] = 0;
+    request[1] = level;
+    request[2] = (USERID >> 24) & 0xFF;
+    request[3] = (USERID >> 16) & 0xFF;
+    request[4] = (USERID >> 8) & 0xFF;
+    request[5] =  USERID & 0xFF;
+    request[6] = (seed >> 8) & 0xFF;
+    request[7] =  seed & 0xFF;
 }
+
 void sendMessage(unsigned char* message, int len, char* address){
     if(IPV == AF_INET){
         sendto(IPv4Socket, message, len, 0, remote_addr, sizeof(struct sockaddr_in));
@@ -208,6 +215,7 @@ void sendMessage(unsigned char* message, int len, char* address){
         sendto(IPv6Socket, message, len, 0, remote_addr, sizeof(struct sockaddr_in));
     }
 }
+
 int receiveMessage(unsigned char *buf, char* address) {
     unsigned int size = sizeof(remote_addr_in);
     if (remote_addr->sa_family == AF_INET) {
@@ -216,6 +224,7 @@ int receiveMessage(unsigned char *buf, char* address) {
         return (int) recvfrom(IPv6Socket, buf, 256, 0, remote_addr, &size);
     }
 }
+
 void changeLocalPort(unsigned short port){
     SELF_PORT = port;
     close(IPv4Socket);
@@ -231,19 +240,15 @@ void changeLocalPort(unsigned short port){
         perror("bind()");
     }
 }
+
 void makeIPv4Socket() {
     IPv4Socket = socket(AF_INET, SOCK_DGRAM, 0);
 }
+
 void makeIPv6Socket() {
     IPv6Socket = socket(AF_INET6, SOCK_DGRAM, 0);
 }
-void swapIPv() {
-    if (IPV == AF_INET) {
-        IPV = AF_INET6;
-    } else {
-        IPV = AF_INET;
-    }
-}
+
 void print_bytes(unsigned char *bytes, int byteslen) {
     int i, j, byteslen_adjusted;
 
