@@ -89,22 +89,42 @@ int main(int argc, char *argv[]) {
         return 5;
     }
 
-    // Process the response and extract the fields as specified in the specs
-    unsigned char opcode = response[0];
-    unsigned char status = response[1];
-    unsigned short portnum = ntohs(*((unsigned short *)&response[2]));
-    unsigned int ipaddr = ntohl(*((unsigned int *)&response[4]));
+    // Process the response and extract the fields as before
+    if (bytes_received != 8) {
+        fprintf(stderr, "Unexpected response size\n");
+        return 6;
+    }
 
-    // Print the response using print_bytes
-    print_bytes(response, bytes_received);
+    unsigned char op_code = response[0];
+    unsigned char level_response = response[1];
+    unsigned int nonce = ntohl(*(unsigned int *)(response + 4));
 
-    // Print the response fields
-    printf("opcode: %d\n", opcode);
-    printf("status: %d\n", status);
-    printf("portnum: %d\n", portnum);
-    printf("ipaddr: %d\n", ipaddr);
+    switch (op_code) {
+        case 0:
+            // Handle op-code 0 (communicate with the server as you did previously)
+            response = getServersResponse(level_response, nonce, sockfd, p, their_addr, addr_len);
+            break;
+        case 1:
+            // Handle op-code 1 (communicate with a new remote server-side port)
+            break;
+        case 2:
+            // Handle op-code 2 (communicate with a new local client-side port)
+            break;
+        case 3:
+            // Handle op-code 3 (derive the nonce from remote ports)
+            break;
+        case 4:
+            // Handle op-code 4 (communicate with a new address family, IPv4 or IPv6)
+            break;
+        default:
+            fprintf(stderr, "Unknown op-code received: %d\n", op_code);
+            return 7;
+    }
 
-    // You need to implement the logic for parsing the response, handling op-codes, and more.
+    // Print op-code and other information
+    printf("Op-Code: %d\n", op_code);
+    printf("Level Response: %d\n", level_response);
+    printf("Nonce: %u\n", nonce);
 
     // Clean up and close the socket
     close(sockfd);
