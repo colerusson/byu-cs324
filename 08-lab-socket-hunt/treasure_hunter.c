@@ -18,6 +18,7 @@ int IPV = AF_INET;
 int LOCAL_PORT = 8080;
 
 socklen_t addr_len;
+
 struct sockaddr_in remote_addr_in;
 struct sockaddr_in6 remote_addr_in6;
 struct sockaddr *remote_addr;
