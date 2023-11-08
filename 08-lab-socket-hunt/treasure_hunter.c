@@ -1,173 +1,285 @@
-// Replace PUT_USERID_HERE with your actual BYU CS user id, which you can find
-// by running `id -u` on a CS lab machine.
-#define USERID 1823702742
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
 #include <netdb.h>
-#include <sys/types.h>
-#include <sys/socket.h>
+#include <unistd.h>
+
+#define USERID 1823702742
+#define BUFSIZE 8
 
 int verbose = 0;
+int IPv4Socket = 2;
+int IPv6Socket = 2;
+int SERVER_PORT = 8080;
+int SELF_PORT = 8080;
+int IPV = AF_INET;
+
+int addr_fam;
+socklen_t addr_len;
+
+struct sockaddr_in remote_addr_in;
+struct sockaddr_in6 remote_addr_in6;
+struct sockaddr *remote_addr;
+
+struct sockaddr_in local_addr_in;
+struct sockaddr_in6 local_addr_in6;
+struct sockaddr *local_addr;
+
+
+struct ParsedMessage {
+    unsigned char errorNumber, huntOver;
+    unsigned char opCode;
+    unsigned char chunkLen;
+    unsigned short param;
+    unsigned int nonce;
+    unsigned char chunk[256];
+};
 
 void print_bytes(unsigned char *bytes, int byteslen);
+void initRequest(int level, int seed, unsigned char *request);
+void changeServerPort(unsigned short port);
+void changeLocalPort(unsigned short port);
+void updateNonce(struct ParsedMessage *pMessage);
+void swapIPv();
+void sendMessage(unsigned char* message, int length, char* address);
+int receiveMessage(unsigned char *buf, char* address);
+void makeIPv4Socket();
+void makeIPv6Socket();
+char* errorToString(int errorNum);
+void parseResponse(unsigned char message[256], struct ParsedMessage *pMessage);
+void addTreasureChunk(unsigned char chunk[], unsigned char len, unsigned char treasure[256], int *treasureLength);
 
 int main(int argc, char *argv[]) {
-    if (argc != 5) {
-        fprintf(stderr, "Usage: %s <server> <port> <level> <seed>\n", argv[0]);
-        return 1;
-    }
-
+    // parse command args
     char *server = argv[1];
-    int port = atoi(argv[2]);
-    int level = atoi(argv[3]);
-    int seed = atoi(argv[4]);
+    int seed, level;
+    SERVER_PORT  = atoi(argv[2]);
+    level = atoi(argv[3]);
+    seed  = atoi(argv[4]);
+    // create our request
+    unsigned char request[BUFSIZE];
+    struct ParsedMessage parsedMessage;
 
-    // Create an 8-byte message buffer as required
-    unsigned char message[8];
+    unsigned char message[256];
+    unsigned char treasure[1024];
+    int treasureLength = 0;
 
-    // Fill in the message buffer with the specified format
-    message[0] = 0; // Byte 0
-    message[1] = (unsigned char)level; // Byte 1, level as an integer between 0 and 4
-    *((unsigned int *)&message[2]) = htonl(USERID); // Bytes 2 - 5, user ID in network byte order
-    *((unsigned short *)&message[6]) = htons((unsigned short)seed); // Bytes 6 - 7, seed in network byte order
+    makeIPv4Socket();
+    makeIPv6Socket();
+    initRequest(level, seed, request);
+    int isFirst = 1;
+    struct addrinfo hints, *addr;
+    char portString[6];
+    hints.ai_family = IPV;
+    hints.ai_socktype = SOCK_DGRAM;
+    hints.ai_flags = 0;
+    hints.ai_protocol = 0;
+    sprintf(portString, "%d", SERVER_PORT);
 
-    // Print the message using print_bytes
-    print_bytes(message, 8);
-
-    // Set up socket variables
-    int sockfd;
-    struct addrinfo hints, *serverinfo, *p;
-
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_INET; // Use IPv4
-    hints.ai_socktype = SOCK_DGRAM; // Use UDP
-
-    char port_str[6];
-    snprintf(port_str, sizeof(port_str), "%d", port);
-
-    if (getaddrinfo(server, port_str, &hints, &serverinfo) != 0) {
-        perror("getaddrinfo");
-        return 2;
+    int result = getaddrinfo(server, portString, &hints, &addr);
+    if (result != 0) {
+        fprintf(stderr, "getaddrinfo failed: %s\n", gai_strerror(result));
+        exit(EXIT_FAILURE);
+    }
+    if (addr == NULL) {
+        fprintf(stderr, "getaddrinfo returned NULL\n");
+        exit(EXIT_FAILURE);
     }
 
-    // Iterate through the results and bind to the first suitable socket
-    for (p = serverinfo; p != NULL; p = p->ai_next) {
-        if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-            perror("socket");
-            continue;
+    remote_addr_in = *((struct sockaddr_in *) addr->ai_addr);
+    remote_addr = (struct sockaddr *) &remote_addr_in;
+    local_addr = (struct sockaddr *) &local_addr_in;
+    addr_len = sizeof(local_addr_in);
+
+    do {
+        if (isFirst == 1) {
+            sendMessage(request, BUFSIZE, server);
+            isFirst = 0;
+        } else {
+            uint32_t networkInt = parsedMessage.nonce;
+            uint32_t hostInt = ntohl(networkInt);
+            hostInt += 1;
+            networkInt = htonl(hostInt);
+            fprintf(stderr, "hostInt = %d\n", hostInt);
+            sendMessage((unsigned char *) &networkInt, 4, server);
         }
-        break;
+        receiveMessage(message, server);
+        parseResponse(message, &parsedMessage);
+
+        addTreasureChunk(parsedMessage.chunk, parsedMessage.chunkLen, treasure, &treasureLength);
+        switch (parsedMessage.opCode) {
+            case 1: // new server port
+                remote_addr_in.sin_port = parsedMessage.param;
+                break;
+            case 2: // new local port
+                changeLocalPort(parsedMessage.param);
+                break;
+            case 3: // update nonce
+                updateNonce(&parsedMessage);
+                break;
+            case 4: // switch IPV
+                swapIPv();
+                break;
+        }
+    } while (parsedMessage.huntOver != 1);
+    treasure[treasureLength] = 0;
+    printf("%s\n", treasure);
+}
+void parseResponse(unsigned char message[256], struct ParsedMessage *pMessage) {
+    if (message[0] == 0) {
+        pMessage->huntOver = 1;
     }
-
-    if (p == NULL) {
-        fprintf(stderr, "Failed to create socket\n");
-        return 3;
+    pMessage->chunkLen = (unsigned char) message[0];
+    // error code
+    if (pMessage->chunkLen > 127) {
+        pMessage->errorNumber = (char) pMessage->chunkLen;
+        fprintf(stderr, "%s\n", errorToString(pMessage->errorNumber));
+        exit(pMessage->errorNumber);
     }
-
-    // Send the initial request message to the server
-    ssize_t bytes_sent = sendto(sockfd, message, 8, 0, p->ai_addr, p->ai_addrlen);
-    if (bytes_sent == -1) {
-        perror("sendto");
-        close(sockfd);
-        freeaddrinfo(serverinfo);
-        return 4;
-    }
-
-    // Receive the server's response using recvfrom
-    unsigned char response[256]; // Max response size is 256 bytes
-    struct sockaddr_storage their_addr;
-    socklen_t addr_len = sizeof their_addr;
-
-    ssize_t bytes_received = recvfrom(sockfd, response, sizeof(response), 0, (struct sockaddr *)&their_addr, &addr_len);
-    if (bytes_received == -1) {
-        perror("recvfrom");
-        close(sockfd);
-        freeaddrinfo(serverinfo);
-        return 5;
-    }
-
-    // Process the response and extract the fields as before
-    if (bytes_received != 8) {
-        fprintf(stderr, "Unexpected response size\n");
-        return 6;
-    }
-
-    unsigned char op_code = response[0];
-    unsigned char level_response = response[1];
-    unsigned int nonce = ntohl(*(unsigned int *)(response + 4));
-
-    switch (op_code) {
-        case 0:
-            // Handle op-code 0 (communicate with the server as you did previously)
-            break;
-        case 1:
-            // Handle op-code 1 (communicate with a new remote server-side port)
-            break;
-        case 2:
-            // Handle op-code 2 (communicate with a new local client-side port)
-            break;
-        case 3:
-            // Handle op-code 3 (derive the nonce from remote ports)
-            break;
-        case 4:
-            // Handle op-code 4 (communicate with a new address family, IPv4 or IPv6)
-            break;
+    // chunk
+    memcpy(&(pMessage->chunk), &message[1], pMessage->chunkLen);
+    // opCode
+    pMessage->opCode = (char) message[pMessage->chunkLen + 1];
+    // param
+    memcpy(&(pMessage->param), &message[pMessage->chunkLen + 2], 2);
+    // nonce
+    memcpy(&(pMessage->nonce), &message[(int) pMessage->chunkLen + 4], 4);
+}
+void addTreasureChunk(unsigned char chunk[], unsigned char len, unsigned char treasure[256], int* treasureLength) {
+    memcpy(treasure + *treasureLength, chunk, len);
+    *treasureLength += len;
+}
+char* errorToString(int errorNum){
+    switch (errorNum) {
+        case 129:
+            return "Unexpected source port";
+        case 130:
+            return "Wrong destination port";
+        case 131:
+            return "Incorrect length";
+        case 132:
+            return "Incorrect nonce";
+        case 133:
+            return "Server unable to bind to address port";
+        case 134:
+            return "Server unable to detect port for client to bind";
+        case 135:
+            return "Bad level or non-zero first byte on first request";
+        case 136:
+            return "Bad user ID on first request";
+        case 137:
+            return "Unknown error detected by server";
         default:
-            fprintf(stderr, "Unknown op-code received: %d\n", op_code);
-            return 7;
+            return "Unknown error detected by client";
     }
-
-    // Print op-code and other information
-    printf("Op-Code: %d\n", op_code);
-    printf("Level Response: %d\n", level_response);
-    printf("Nonce: %u\n", nonce);
-
-    // Clean up and close the socket
-    close(sockfd);
-    freeaddrinfo(serverinfo);
-
-    return 0;
 }
 
-void print_bytes(unsigned char *bytes, int byteslen) {
-	int i, j, byteslen_adjusted;
 
-	if (byteslen % 8) {
-		byteslen_adjusted = ((byteslen / 8) + 1) * 8;
-	} else {
-		byteslen_adjusted = byteslen;
-	}
-	for (i = 0; i < byteslen_adjusted + 1; i++) {
-		if (!(i % 8)) {
-			if (i > 0) {
-				for (j = i - 8; j < i; j++) {
-					if (j >= byteslen_adjusted) {
-						printf("  ");
-					} else if (j >= byteslen) {
-						printf("  ");
-					} else if (bytes[j] >= '!' && bytes[j] <= '~') {
-						printf(" %c", bytes[j]);
-					} else {
-						printf(" .");
-					}
-				}
-			}
-			if (i < byteslen_adjusted) {
-				printf("\n%02X: ", i);
-			}
-		} else if (!(i % 4)) {
-			printf(" ");
-		}
-		if (i >= byteslen_adjusted) {
-			continue;
-		} else if (i >= byteslen) {
-			printf("   ");
-		} else {
-			printf("%02X ", bytes[i]);
-		}
-	}
-	printf("\n");
+void updateNonce(struct ParsedMessage *pMessage) {
+    unsigned short m = ntohs(pMessage->param);  // correct afaik
+    unsigned int total = 0;                     // correct type
+    struct sockaddr_in server_addr1;            // works
+    socklen_t addr_len1 = sizeof(server_addr1); // works
+    for (int i = 0; i < m; i++) {
+        recvfrom(IPv4Socket, NULL, 0, 0, (struct sockaddr *)&server_addr1, &addr_len1);
+        unsigned short port = ntohs(server_addr1.sin_port); // appears to work idk how to know if it's the correct value though
+//        fprintf(stderr, "port = %d\n", port);
+        total += port;
+    }
+    pMessage->nonce = htonl(total);
+}
+
+void initRequest(int level, int seed, unsigned char *request) {
+    // set the value of our request to the following format
+    request[0] = 0;                     // set the first byte to 0
+    request[1] = level;                 // set the second byte to contain the 4-bit value of level in the most significant nibble
+    request[2] = (USERID >> 24) & 0xFF; // set the fourth byte to the most significant byte of USERID
+    request[3] = (USERID >> 16) & 0xFF; // set the fifth byte to the second most significant byte of USERID
+    request[4] = (USERID >> 8) & 0xFF;  // set the sixth byte to the second least significant byte of USERID
+    request[5] =  USERID & 0xFF;        // set the seventh byte to the least significant byte of USERID
+    request[6] = (seed >> 8) & 0xFF;    // set the eighth byte to the most significant byte of seed
+    request[7] =  seed & 0xFF;          // set the ninth byte to the least significant byte of seed
+}
+void sendMessage(unsigned char* message, int len, char* address){
+    if(IPV == AF_INET){
+        sendto(IPv4Socket, message, len, 0, remote_addr, sizeof(struct sockaddr_in));
+    }else{
+        sendto(IPv6Socket, message, len, 0, remote_addr, sizeof(struct sockaddr_in));
+    }
+}
+int receiveMessage(unsigned char *buf, char* address) {
+    unsigned int size = sizeof(remote_addr_in);
+    if (remote_addr->sa_family == AF_INET) {
+        return (int) recvfrom(IPv4Socket, buf, 256, 0, remote_addr, &size);
+    } else {
+        return (int) recvfrom(IPv6Socket, buf, 256, 0, remote_addr, &size);
+    }
+}
+void changeLocalPort(unsigned short port){
+    SELF_PORT = port;
+    close(IPv4Socket);
+    close(IPv6Socket);
+
+    makeIPv4Socket();
+    makeIPv6Socket();
+
+    local_addr_in.sin_family = AF_INET; // use AF_INET (IPv4)
+    local_addr_in.sin_port = port; // specific port
+    local_addr_in.sin_addr.s_addr = 0; // any/all local addresses
+    if (bind(IPv4Socket, local_addr, addr_len) < 0) {
+        perror("bind()");
+    }
+}
+void makeIPv4Socket() {
+    IPv4Socket = socket(AF_INET, SOCK_DGRAM, 0);
+}
+void makeIPv6Socket() {
+    IPv6Socket = socket(AF_INET6, SOCK_DGRAM, 0);
+}
+void swapIPv() {
+    if (IPV == AF_INET) {
+        IPV = AF_INET6;
+    } else {
+        IPV = AF_INET;
+    }
+}
+void print_bytes(unsigned char *bytes, int byteslen) {
+    int i, j, byteslen_adjusted;
+
+    if (byteslen % 8) {
+        byteslen_adjusted = ((byteslen / 8) + 1) * 8;
+    } else {
+        byteslen_adjusted = byteslen;
+    }
+    for (i = 0; i < byteslen_adjusted + 1; i++) {
+        if (!(i % 8)) {
+            if (i > 0) {
+                for (j = i - 8; j < i; j++) {
+                    if (j >= byteslen_adjusted) {
+                        printf("  ");
+                    } else if (j >= byteslen) {
+                        printf("  ");
+                    } else if (bytes[j] >= '!' && bytes[j] <= '~') {
+                        printf(" %c", bytes[j]);
+                    } else {
+                        printf(" .");
+                    }
+                }
+            }
+            if (i < byteslen_adjusted) {
+                printf("\n%02X: ", i);
+            }
+        } else if (!(i % 4)) {
+            printf(" ");
+        }
+        if (i >= byteslen_adjusted) {
+            continue;
+        } else if (i >= byteslen) {
+            printf("   ");
+        } else {
+            printf("%02X ", bytes[i]);
+        }
+    }
+    printf("\n");
 }
