@@ -4,20 +4,18 @@
 #define BUFSIZE 8
 
 #include <stdio.h>
+#include <netdb.h>
 #include <stdlib.h>
 #include <string.h>
-#include <arpa/inet.h>
-#include <netdb.h>
 #include <sys/types.h>
+#include <arpa/inet.h>
 #include <sys/socket.h>
-
 
 int verbose = 0;
 int IPv4Socket = 2;
 int IPv6Socket = 2;
 int IPV = AF_INET;
-int SELF_PORT = 8080;
-
+int LOCAL_PORT = 8080;
 
 socklen_t addr_len;
 struct sockaddr_in remote_addr_in;
@@ -28,60 +26,61 @@ struct sockaddr_in6 local_addr_in6;
 struct sockaddr *local_addr;
 
 struct RequestMessage {
-    unsigned char errorNumber, huntOver;
+    unsigned char errorNumber;
     unsigned char opCode;
-    unsigned char chunkLen;
     unsigned short param;
     unsigned int nonce;
     unsigned char chunk[256];
+    unsigned char chunkLength;
+    unsigned char finishedHunt;
 };
 
-void print_bytes(unsigned char *bytes, int byteslen);
-void initRequest(int level, int seed, unsigned char *request);
-void changeLocalPort(unsigned short port);
-void updateNonce(struct RequestMessage *rMessage);
-void sendMessage(unsigned char* message, int length, char* address);
-int receiveMessage(unsigned char *buf, char* address);
-void makeIPv4Socket();
-void makeIPv6Socket();
-char* errorToString(int errorNum);
-void parseResponse(unsigned char message[256], struct RequestMessage *rMessage);
-void addTreasureChunk(unsigned char chunk[], unsigned char len, unsigned char treasure[256], int *treasureLength);
+// Function prototypes
+void initializeRequest(int level, int seed, unsigned char *request);
+void parseResponse(unsigned char message[256], struct RequestMessage *requestMessage);
+void updateTreasure(unsigned char chunk[], unsigned char length, unsigned char treasure[256], int *treasureLength);
+void updateLocalPort(unsigned short port);
+void updateNonce(struct RequestMessage *requestMessage);
+void createIPv4();
+void createIPv6();
+void sendMessage(unsigned char *message, int length, char *address);
+int receiveMessage(unsigned char *buf, char *address);
+char *errorNumberToString(int errorNum);
 
 int main(int argc, char *argv[]) {
-    // get the command arguments for server, port, level, and seed
+    // Get command line arguments for server, port, level, and seed
     char *server = argv[1];
-    int port  = atoi(argv[2]);
+    int port = atoi(argv[2]);
     int level = atoi(argv[3]);
-    int seed  = atoi(argv[4]);
+    int seed = atoi(argv[4]);
 
-    // create the request
+    // Create the request
     unsigned char request[BUFSIZE];
     struct RequestMessage requestMessage;
 
-    // create the response
+    // Create the response
     int treasureLength = 0;
     unsigned char message[256];
     unsigned char treasure[1024];
 
-    // create the socket
-    makeIPv4Socket();
-    makeIPv6Socket();
-    initRequest(level, seed, request);
+    // Create and initialize the sockets
+    createIPv4();
+    createIPv6();
+    initializeRequest(level, seed, request);
 
-    // send the request
-    int isFirst = 1;
+    // Send the request
+    int firstRequest = 1;
     struct addrinfo hints, *addr;
     char portString[6];
 
-    // set the address info
+    // Set the address info
     hints.ai_family = IPV;
     hints.ai_socktype = SOCK_DGRAM;
     hints.ai_flags = 0;
     hints.ai_protocol = 0;
     sprintf(portString, "%d", port);
 
-    // get the address info
+    // Get the address info
     int result = getaddrinfo(server, portString, &hints, &addr);
     if (result != 0) {
         fprintf(stderr, "getaddrinfo failed: %s\n", gai_strerror(result));
@@ -92,72 +91,149 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    // set the remote address
-    remote_addr_in = *((struct sockaddr_in *) addr->ai_addr);
-    remote_addr = (struct sockaddr *) &remote_addr_in;
-    local_addr = (struct sockaddr *) &local_addr_in;
+    // Set the remote address
+    remote_addr_in = *((struct sockaddr_in *)addr->ai_addr);
+    remote_addr = (struct sockaddr *)&remote_addr_in;
+    local_addr = (struct sockaddr *)&local_addr_in;
     addr_len = sizeof(local_addr_in);
 
-    // send the request
+    // Send the request
     do {
-        if (isFirst == 1) {
+        if (firstRequest == 1) {
             sendMessage(request, BUFSIZE, server);
-            isFirst = 0;
-        } else {
+            firstRequest = 0;
+        }
+        else {
             uint32_t networkInt = requestMessage.nonce;
             uint32_t hostInt = ntohl(networkInt);
             hostInt += 1;
             networkInt = htonl(hostInt);
             fprintf(stderr, "hostInt = %d\n", hostInt);
-            sendMessage((unsigned char *) &networkInt, 4, server);
+            sendMessage((unsigned char *)&networkInt, 4, server);
         }
         receiveMessage(message, server);
         parseResponse(message, &requestMessage);
 
-        addTreasureChunk(requestMessage.chunk, requestMessage.chunkLen, treasure, &treasureLength);
-        switch (requestMessage.opCode) {
-            case 1: // new server port
-                remote_addr_in.sin_port = requestMessage.param;
-                break;
-            case 2: // new local port
-                changeLocalPort(requestMessage.param);
-                break;
-            case 3: // update nonce
-                updateNonce(&requestMessage);
-                break;
+        updateTreasure(requestMessage.chunk, requestMessage.chunkLength, treasure, &treasureLength);
+        if (requestMessage.opCode == 1) {
+            // New server port
+            remote_addr_in.sin_port = requestMessage.param;
         }
-    } while (requestMessage.huntOver != 1);
+        else if (requestMessage.opCode == 2) {
+            // New local port
+            updateLocalPort(requestMessage.param);
+        }
+        else if (requestMessage.opCode == 3) {
+            // Update nonce
+            updateNonce(&requestMessage);
+        }
+    } while (requestMessage.finishedHunt != 1);
+
     treasure[treasureLength] = 0;
     printf("%s\n", treasure);
 }
 
-void parseResponse(unsigned char message[256], struct RequestMessage *rMessage) {
+void initializeRequest(int level, int seed, unsigned char *request) {
+    // Set the value of the request to the following format
+    request[0] = 0;
+    request[1] = level;
+    request[2] = (USERID >> 24) & 0xFF;
+    request[3] = (USERID >> 16) & 0xFF;
+    request[4] = (USERID >> 8) & 0xFF;
+    request[5] = USERID & 0xFF;
+    request[6] = (seed >> 8) & 0xFF;
+    request[7] = seed & 0xFF;
+}
+
+void parseResponse(unsigned char message[256], struct RequestMessage *requestMessage) {
     if (message[0] == 0) {
-        rMessage->huntOver = 1;
+        requestMessage->finishedHunt = 1;
     }
-    rMessage->chunkLen = (unsigned char) message[0];
-    // error code
-    if (rMessage->chunkLen > 127) {
-        rMessage->errorNumber = (char) rMessage->chunkLen;
-        fprintf(stderr, "%s\n", errorToString(rMessage->errorNumber));
-        exit(rMessage->errorNumber);
+    requestMessage->chunkLength = (unsigned char)message[0];
+
+    // Error code
+    if (requestMessage->chunkLength > 127) {
+        requestMessage->errorNumber = (char)requestMessage->chunkLength;
+        fprintf(stderr, "%s\n", errorNumberToString(requestMessage->errorNumber));
+        exit(requestMessage->errorNumber);
     }
-    // chunk
-    memcpy(&(rMessage->chunk), &message[1], rMessage->chunkLen);
-    // opCode
-    rMessage->opCode = (char) message[rMessage->chunkLen + 1];
-    // param
-    memcpy(&(rMessage->param), &message[rMessage->chunkLen + 2], 2);
-    // nonce
-    memcpy(&(rMessage->nonce), &message[(int) rMessage->chunkLen + 4], 4);
+
+    // Chunk
+    memcpy(&(requestMessage->chunk), &message[1], requestMessage->chunkLength);
+
+    // OpCode
+    requestMessage->opCode = (char)message[requestMessage->chunkLength + 1];
+
+    // Param
+    memcpy(&(requestMessage->param), &message[requestMessage->chunkLength + 2], 2);
+
+    // Nonce
+    memcpy(&(requestMessage->nonce), &message[(int)requestMessage->chunkLength + 4], 4);
 }
 
-void addTreasureChunk(unsigned char chunk[], unsigned char len, unsigned char treasure[256], int* treasureLength) {
-    memcpy(treasure + *treasureLength, chunk, len);
-    *treasureLength += len;
+void updateTreasure(unsigned char chunk[], unsigned char length, unsigned char treasure[256], int *treasureLength) {
+    memcpy(treasure + *treasureLength, chunk, length);
+    *treasureLength += length;
 }
 
-char* errorToString(int errorNum){
+void updateLocalPort(unsigned short port) {
+    LOCAL_PORT = port;
+
+    close(IPv4Socket);
+    close(IPv6Socket);
+
+    createIPv4();
+    createIPv6();
+
+    local_addr_in.sin_family = AF_INET; // Use AF_INET (IPv4)
+    local_addr_in.sin_port = port;      // Specific port
+    local_addr_in.sin_addr.s_addr = 0;  // Any/all local addresses
+    if (bind(IPv4Socket, local_addr, addr_len) < 0) {
+        perror("bind()");
+    }
+}
+
+void updateNonce(struct RequestMessage *requestMessage) {
+    unsigned short m = ntohs(requestMessage->param);
+    unsigned int total = 0;
+    struct sockaddr_in server_addr1;
+    socklen_t addr_len1 = sizeof(server_addr1);
+    for (int i = 0; i < m; i++) {
+        recvfrom(IPv4Socket, NULL, 0, 0, (struct sockaddr *)&server_addr1, &addr_len1);
+        unsigned short port = ntohs(server_addr1.sin_port);
+        total += port;
+    }
+    requestMessage->nonce = htonl(total);
+}
+
+void createIPv4() {
+    IPv4Socket = socket(AF_INET, SOCK_DGRAM, 0);
+}
+
+void createIPv6() {
+    IPv6Socket = socket(AF_INET6, SOCK_DGRAM, 0);
+}
+
+void sendMessage(unsigned char *message, int len, char *address) {
+    if (IPV == AF_INET) {
+        sendto(IPv4Socket, message, len, 0, remote_addr, sizeof(struct sockaddr_in));
+    }
+    else {
+        sendto(IPv6Socket, message, len, 0, remote_addr, sizeof(struct sockaddr_in));
+    }
+}
+
+int receiveMessage(unsigned char *buf, char *address) {
+    unsigned int size = sizeof(remote_addr_in);
+    if (remote_addr->sa_family == AF_INET) {
+        return (int)recvfrom(IPv4Socket, buf, 256, 0, remote_addr, &size);
+    }
+    else {
+        return (int)recvfrom(IPv6Socket, buf, 256, 0, remote_addr, &size);
+    }
+}
+
+char *errorNumberToString(int errorNum) {
     switch (errorNum) {
         case 129:
             return "Unexpected source port";
@@ -172,119 +248,12 @@ char* errorToString(int errorNum){
         case 134:
             return "Server unable to detect port for client to bind";
         case 135:
-            return "Bad level or non-zero first byte on first request";
+            return "Bad level or non-zero first byte on the first request";
         case 136:
-            return "Bad user ID on first request";
+            return "Bad user ID on the first request";
         case 137:
-            return "Unknown error detected by server";
+            return "Unknown error detected by the server";
         default:
-            return "Unknown error detected by client";
+            return "Unknown error detected by the client";
     }
-}
-
-
-void updateNonce(struct RequestMessage *rMessage) {
-    unsigned short m = ntohs(rMessage->param);
-    unsigned int total = 0;
-    struct sockaddr_in server_addr1;
-    socklen_t addr_len1 = sizeof(server_addr1);
-    for (int i = 0; i < m; i++) {
-        recvfrom(IPv4Socket, NULL, 0, 0, (struct sockaddr *)&server_addr1, &addr_len1);
-        unsigned short port = ntohs(server_addr1.sin_port);
-        total += port;
-    }
-    rMessage->nonce = htonl(total);
-}
-
-void initRequest(int level, int seed, unsigned char *request) {
-    // set the value of the request to the following format
-    request[0] = 0;
-    request[1] = level;
-    request[2] = (USERID >> 24) & 0xFF;
-    request[3] = (USERID >> 16) & 0xFF;
-    request[4] = (USERID >> 8) & 0xFF;
-    request[5] =  USERID & 0xFF;
-    request[6] = (seed >> 8) & 0xFF;
-    request[7] =  seed & 0xFF;
-}
-
-void sendMessage(unsigned char* message, int len, char* address){
-    if(IPV == AF_INET){
-        sendto(IPv4Socket, message, len, 0, remote_addr, sizeof(struct sockaddr_in));
-    }else{
-        sendto(IPv6Socket, message, len, 0, remote_addr, sizeof(struct sockaddr_in));
-    }
-}
-
-int receiveMessage(unsigned char *buf, char* address) {
-    unsigned int size = sizeof(remote_addr_in);
-    if (remote_addr->sa_family == AF_INET) {
-        return (int) recvfrom(IPv4Socket, buf, 256, 0, remote_addr, &size);
-    } else {
-        return (int) recvfrom(IPv6Socket, buf, 256, 0, remote_addr, &size);
-    }
-}
-
-void changeLocalPort(unsigned short port){
-    SELF_PORT = port;
-    close(IPv4Socket);
-    close(IPv6Socket);
-
-    makeIPv4Socket();
-    makeIPv6Socket();
-
-    local_addr_in.sin_family = AF_INET; // use AF_INET (IPv4)
-    local_addr_in.sin_port = port; // specific port
-    local_addr_in.sin_addr.s_addr = 0; // any/all local addresses
-    if (bind(IPv4Socket, local_addr, addr_len) < 0) {
-        perror("bind()");
-    }
-}
-
-void makeIPv4Socket() {
-    IPv4Socket = socket(AF_INET, SOCK_DGRAM, 0);
-}
-
-void makeIPv6Socket() {
-    IPv6Socket = socket(AF_INET6, SOCK_DGRAM, 0);
-}
-
-void print_bytes(unsigned char *bytes, int byteslen) {
-    int i, j, byteslen_adjusted;
-
-    if (byteslen % 8) {
-        byteslen_adjusted = ((byteslen / 8) + 1) * 8;
-    } else {
-        byteslen_adjusted = byteslen;
-    }
-    for (i = 0; i < byteslen_adjusted + 1; i++) {
-        if (!(i % 8)) {
-            if (i > 0) {
-                for (j = i - 8; j < i; j++) {
-                    if (j >= byteslen_adjusted) {
-                        printf("  ");
-                    } else if (j >= byteslen) {
-                        printf("  ");
-                    } else if (bytes[j] >= '!' && bytes[j] <= '~') {
-                        printf(" %c", bytes[j]);
-                    } else {
-                        printf(" .");
-                    }
-                }
-            }
-            if (i < byteslen_adjusted) {
-                printf("\n%02X: ", i);
-            }
-        } else if (!(i % 4)) {
-            printf(" ");
-        }
-        if (i >= byteslen_adjusted) {
-            continue;
-        } else if (i >= byteslen) {
-            printf("   ");
-        } else {
-            printf("%02X ", bytes[i]);
-        }
-    }
-    printf("\n");
 }
