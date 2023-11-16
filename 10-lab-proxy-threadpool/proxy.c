@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 /* Recommended max object size */
 #define MAX_OBJECT_SIZE 102400
@@ -11,20 +12,50 @@ void test_parser();
 void print_bytes(unsigned char *, int);
 
 
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
 	test_parser();
 	printf("%s\n", user_agent_hdr);
 	return 0;
 }
 
 int complete_request_received(char *request) {
-	return 0;
+    char *end_of_headers = strstr(request, "\r\n\r\n");
+    if (end_of_headers != NULL) {
+        return 1; // Request is complete
+    } else {
+        return 0; // Request is not complete
+    }
 }
 
-int parse_request(char *request, char *method,
-		char *hostname, char *port, char *path) {
-	return 0;
+int parse_request(char *request, char *method, char *hostname, char *port, char *path) {
+    // Extract method
+    char *end_of_method = strstr(request, " ");
+    if (end_of_method != NULL) {
+        strncpy(method, request, end_of_method - request);
+        method[end_of_method - request] = '\0';
+    } else {
+        return 0; // Method extraction failed
+    }
+
+    // Find the start of URL (after the first space)
+    char *start_of_url = end_of_method + 1;
+
+    // Extract the URL
+    char *end_of_url = strstr(start_of_url, " ");
+    if (end_of_url != NULL) {
+        int url_length = end_of_url - start_of_url;
+        char url[url_length + 1];
+        strncpy(url, start_of_url, url_length);
+        url[url_length] = '\0';
+
+        // Extract hostname, port, and path from the URL (using the rules provided)
+        // Your code here to parse the URL and populate hostname, port, and path variables
+        // ...
+
+        return 1; // Parsing successful
+    } else {
+        return 0; // URL extraction failed
+    }
 }
 
 void test_parser() {
