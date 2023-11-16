@@ -53,9 +53,6 @@ int parse_request(char *request, char *method, char *hostname, char *port, char 
         strncpy(url, start_of_url, url_length);
         url[url_length] = '\0';
 
-        // Extract hostname, port, and path from the URL (using the rules provided)
-        // Your code here to parse the URL and populate hostname, port, and path variables
-        // ...
         // Extract hostname
         char *start_of_hostname = strstr(url, "://");
         if (start_of_hostname != NULL) {
@@ -143,6 +140,7 @@ void test_parser() {
 			printf("HOSTNAME: %s\n", hostname);
 			printf("PORT: %s\n", port);
 			printf("PATH: %s\n", path);
+            printf("REQUEST COMPLETE\n\n");
 		} else {
 			printf("REQUEST INCOMPLETE\n");
 		}
