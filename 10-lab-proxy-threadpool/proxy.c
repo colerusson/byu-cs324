@@ -12,8 +12,8 @@
 
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0";
 
-int complete_request_received(char *);
-int parse_request(char *, char *, char *, char *, char *);
+int complete_request_received(char *, ssize_t);
+int parse_request(char *, ssize_t, char *, char *, char *, char *);
 int open_sfd(int);
 void handle_client(int);
 void test_parser();
@@ -47,18 +47,30 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-int complete_request_received(char *request) {
-    char *end_of_headers = strstr(request, "\r\n\r\n");
-    if (end_of_headers != NULL) {
-        return 1; // Request is complete
-    } else {
-        return 0; // Request is not complete
+//int complete_request_received(char *request) {
+//    char *end_of_headers = strstr(request, "\r\n\r\n");
+//    if (end_of_headers != NULL) {
+//        return 1; // Request is complete
+//    } else {
+//        return 0; // Request is not complete
+//    }
+//}
+
+int complete_request_received(char *request, ssize_t received_bytes) {
+    // Check if we have received at least some data and search for end of headers
+    if (received_bytes > 0) {
+        char *end_of_headers = strstr(request, "\r\n\r\n");
+        if (end_of_headers != NULL) {
+            return 1; // Request is complete
+        }
     }
+    return 0; // Request is not complete
 }
 
-int parse_request(char *request, char *method, char *hostname, char *port, char *path) {
+
+int parse_request(char *request, ssize_t received_bytes, char *method, char *hostname, char *port, char *path) {
     // Check if the request is complete
-    if (!complete_request_received(request)) {
+    if (!complete_request_received(request, received_bytes)) {
         printf("Incomplete request received\n");
         return 0; // Request is incomplete
     }
@@ -164,130 +176,140 @@ int open_sfd(int port) {
 void handle_client(int client_fd) {
     char buffer[1024]; // Adjust buffer size as needed
     ssize_t bytes_received;
+    ssize_t total_received = 0;
+    int request_complete = 0;
 
     // Read from the socket until the entire HTTP request is received
     while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
-        // Print out the received HTTP request
-        print_bytes(buffer, bytes_received);
+        // Accumulate received data
+        total_received += bytes_received;
 
-        // Null-terminate the received data to make it a string
-        buffer[bytes_received] = '\0';
+        // Check if the request is complete by calling the modified function
+        request_complete = complete_request_received(buffer, total_received);
 
-        // Parse the HTTP request and print its components
-        char method[16], hostname[64], port[8], path[64];
-        if (parse_request(buffer, method, hostname, port, path)) {
-            printf("METHOD: %s\n", method);
-            printf("HOSTNAME: %s\n", hostname);
-            printf("PORT: %s\n", port);
-            printf("PATH: %s\n", path);
+        // Process the request if it's complete
+        if (request_complete) {
+            // Combine all received chunks to form the complete request
+            char complete_request[total_received + 1];
+            memcpy(complete_request, buffer, total_received);
+            complete_request[total_received] = '\0';
 
-            // Create the modified HTTP request to send to the server
-            char modified_request[1024]; // Adjust size as needed
-            sprintf(modified_request, "GET %s HTTP/1.0\r\nHost: %s:%s\r\nUser-Agent: %s\r\nConnection: close\r\nProxy-Connection: close\r\n\r\n",
-                    path, hostname, port, user_agent_hdr);
+            // Parse the complete request by passing total_received
+            char method[16], hostname[64], port[8], path[64];
+            if (parse_request(complete_request, total_received, method, hostname, port, path)) {
+                printf("METHOD: %s\n", method);
+                printf("HOSTNAME: %s\n", hostname);
+                printf("PORT: %s\n", port);
+                printf("PATH: %s\n", path);
 
-            // Create a socket to communicate with the server
-            int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-            if (server_fd < 0) {
-                perror("Socket creation error");
-                return;
-            }
+                // Create the modified HTTP request to send to the server
+                char modified_request[1024]; // Adjust size as needed
+                sprintf(modified_request, "GET %s HTTP/1.0\r\nHost: %s:%s\r\nUser-Agent: %s\r\nConnection: close\r\nProxy-Connection: close\r\n\r\n",
+                        path, hostname, port, user_agent_hdr);
 
-            // Set up the server address and port to connect to using getaddrinfo
-            struct sockaddr_in server_addr;
-            memset(&server_addr, 0, sizeof(server_addr));
-            server_addr.sin_family = AF_INET;
-            server_addr.sin_port = htons(atoi(port)); // Convert port to network byte order
-
-            // Resolve the hostname to an IP address using getaddrinfo
-            struct addrinfo hints, *server_info;
-            memset(&hints, 0, sizeof hints);
-            hints.ai_family = AF_INET; // Use IPv4
-            hints.ai_socktype = SOCK_STREAM;
-
-            int status;
-            if ((status = getaddrinfo(hostname, port, &hints, &server_info)) != 0) {
-                fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
-                close(server_fd);
-                return;
-            }
-
-            // Loop through the addresses returned by getaddrinfo until a successful connection is made
-            struct addrinfo *p;
-            for (p = server_info; p != NULL; p = p->ai_next) {
-                if (connect(server_fd, p->ai_addr, p->ai_addrlen) == -1) {
-                    perror("connect");
-                    close(server_fd);
-                    continue;
-                }
-                break;
-            }
-
-            if (p == NULL) {
-                fprintf(stderr, "Failed to connect\n");
-                freeaddrinfo(server_info);
-                close(server_fd);
-                return;
-            }
-
-            // Get the IPv4 address from the sockaddr structure
-            struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
-            void *addr = &(ipv4->sin_addr);
-            char ipstr[INET_ADDRSTRLEN];
-            inet_ntop(p->ai_family, addr, ipstr, sizeof(ipstr));
-            printf("IP Address: %s\n", ipstr);
-
-            // Assign the obtained address to server_addr
-            inet_pton(AF_INET, ipstr, &server_addr.sin_addr);
-
-            freeaddrinfo(server_info); // Free the memory allocated by getaddrinfo
-
-            // Send the modified request to the server
-            ssize_t bytes_sent = send(server_fd, modified_request, strlen(modified_request), 0);
-            if (bytes_sent < 0) {
-                perror("Send error");
-                close(server_fd);
-                return;
-            }
-
-            // Receive and print the server's response
-            char server_response[1024]; // Adjust size as needed
-            ssize_t server_bytes_received;
-            while ((server_bytes_received = recv(server_fd, server_response, sizeof(server_response), 0)) > 0) {
-                print_bytes(server_response, server_bytes_received);
-
-                // Send the response back to the client
-                ssize_t response_sent = send(client_fd, server_response, server_bytes_received, 0);
-                if (response_sent < 0) {
-                    perror("Response send error");
-                    close(server_fd);
-                    close(client_fd);
+                // Create a socket to communicate with the server
+                int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+                if (server_fd < 0) {
+                    perror("Socket creation error");
                     return;
                 }
 
-                // Clear the server_response buffer for the next recv() call
-                memset(server_response, 0, sizeof(server_response));
+                // Set up the server address and port to connect to using getaddrinfo
+                struct sockaddr_in server_addr;
+                memset(&server_addr, 0, sizeof(server_addr));
+                server_addr.sin_family = AF_INET;
+                server_addr.sin_port = htons(atoi(port)); // Convert port to network byte order
+
+                // Resolve the hostname to an IP address using getaddrinfo
+                struct addrinfo hints, *server_info;
+                memset(&hints, 0, sizeof hints);
+                hints.ai_family = AF_INET; // Use IPv4
+                hints.ai_socktype = SOCK_STREAM;
+
+                int status;
+                if ((status = getaddrinfo(hostname, port, &hints, &server_info)) != 0) {
+                    fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+                    close(server_fd);
+                    return;
+                }
+
+                // Loop through the addresses returned by getaddrinfo until a successful connection is made
+                struct addrinfo *p;
+                for (p = server_info; p != NULL; p = p->ai_next) {
+                    if (connect(server_fd, p->ai_addr, p->ai_addrlen) == -1) {
+                        perror("connect");
+                        close(server_fd);
+                        continue;
+                    }
+                    break;
+                }
+
+                if (p == NULL) {
+                    fprintf(stderr, "Failed to connect\n");
+                    freeaddrinfo(server_info);
+                    close(server_fd);
+                    return;
+                }
+
+                // Get the IPv4 address from the sockaddr structure
+                struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+                void *addr = &(ipv4->sin_addr);
+                char ipstr[INET_ADDRSTRLEN];
+                inet_ntop(p->ai_family, addr, ipstr, sizeof(ipstr));
+                printf("IP Address: %s\n", ipstr);
+
+                // Assign the obtained address to server_addr
+                inet_pton(AF_INET, ipstr, &server_addr.sin_addr);
+
+                freeaddrinfo(server_info); // Free the memory allocated by getaddrinfo
+
+                // Send the modified request to the server
+                ssize_t bytes_sent = send(server_fd, modified_request, strlen(modified_request), 0);
+                if (bytes_sent < 0) {
+                    perror("Send error");
+                    close(server_fd);
+                    return;
+                }
+
+                // Receive and print the server's response
+                char server_response[1024]; // Adjust size as needed
+                ssize_t server_bytes_received;
+                while ((server_bytes_received = recv(server_fd, server_response, sizeof(server_response), 0)) > 0) {
+                    print_bytes(server_response, server_bytes_received);
+
+                    // Send the response back to the client
+                    ssize_t response_sent = send(client_fd, server_response, server_bytes_received, 0);
+                    if (response_sent < 0) {
+                        perror("Response send error");
+                        close(server_fd);
+                        close(client_fd);
+                        return;
+                    }
+
+                    // Clear the server_response buffer for the next recv() call
+                    memset(server_response, 0, sizeof(server_response));
+                }
+
+                if (server_bytes_received < 0) {
+                    perror("Server receive error");
+                }
+
+                // Close the connection to the server
+                close(server_fd);
+
+                // Close the client socket
+                close(client_fd);
+                return;
+            } else {
+                printf("Failed to parse HTTP request\n");
+                printf("METHOD: %s\n", method);
+                printf("HOSTNAME: %s\n", hostname);
+                printf("PORT: %s\n", port);
+                printf("PATH: %s\n", path);
+                // Close the client socket (moved to the end)
+                close(client_fd);
+                return;
             }
-
-            if (server_bytes_received < 0) {
-                perror("Server receive error");
-            }
-
-            // Close the connection to the server
-            close(server_fd);
-
-            // Close the client socket
-            close(client_fd);
-            return;
-        } else {
-            printf("Failed to parse HTTP request\n");
-            printf("METHOD: %s\n", method);
-            printf("HOSTNAME: %s\n", hostname);
-            printf("PORT: %s\n", port);
-            printf("PATH: %s\n", path);
-            // Close the client socket (moved to the end)
-            close(client_fd);
-            return;
         }
     }
 
@@ -299,44 +321,183 @@ void handle_client(int client_fd) {
     close(client_fd);
 }
 
-void test_parser() {
-	int i;
-	char method[16], hostname[64], port[8], path[64];
 
-       	char *reqs[] = {
-		"GET http://www.example.com/index.html HTTP/1.0\r\n"
-		"Host: www.example.com\r\n"
-		"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:68.0) Gecko/20100101 Firefox/68.0\r\n"
-		"Accept-Language: en-US,en;q=0.5\r\n\r\n",
+//void handle_client(int client_fd) {
+//    char buffer[1024]; // Adjust buffer size as needed
+//    ssize_t bytes_received;
+//
+//    // Read from the socket until the entire HTTP request is received
+//    while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
+//        // Print out the received HTTP request
+//        print_bytes(buffer, bytes_received);
+//
+//        // Null-terminate the received data to make it a string
+//        buffer[bytes_received] = '\0';
+//
+//        // Parse the HTTP request and print its components
+//        char method[16], hostname[64], port[8], path[64];
+//        if (parse_request(buffer, method, hostname, port, path)) {
+//            printf("METHOD: %s\n", method);
+//            printf("HOSTNAME: %s\n", hostname);
+//            printf("PORT: %s\n", port);
+//            printf("PATH: %s\n", path);
+//
+//            // Create the modified HTTP request to send to the server
+//            char modified_request[1024]; // Adjust size as needed
+//            sprintf(modified_request, "GET %s HTTP/1.0\r\nHost: %s:%s\r\nUser-Agent: %s\r\nConnection: close\r\nProxy-Connection: close\r\n\r\n",
+//                    path, hostname, port, user_agent_hdr);
+//
+//            // Create a socket to communicate with the server
+//            int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+//            if (server_fd < 0) {
+//                perror("Socket creation error");
+//                return;
+//            }
+//
+//            // Set up the server address and port to connect to using getaddrinfo
+//            struct sockaddr_in server_addr;
+//            memset(&server_addr, 0, sizeof(server_addr));
+//            server_addr.sin_family = AF_INET;
+//            server_addr.sin_port = htons(atoi(port)); // Convert port to network byte order
+//
+//            // Resolve the hostname to an IP address using getaddrinfo
+//            struct addrinfo hints, *server_info;
+//            memset(&hints, 0, sizeof hints);
+//            hints.ai_family = AF_INET; // Use IPv4
+//            hints.ai_socktype = SOCK_STREAM;
+//
+//            int status;
+//            if ((status = getaddrinfo(hostname, port, &hints, &server_info)) != 0) {
+//                fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+//                close(server_fd);
+//                return;
+//            }
+//
+//            // Loop through the addresses returned by getaddrinfo until a successful connection is made
+//            struct addrinfo *p;
+//            for (p = server_info; p != NULL; p = p->ai_next) {
+//                if (connect(server_fd, p->ai_addr, p->ai_addrlen) == -1) {
+//                    perror("connect");
+//                    close(server_fd);
+//                    continue;
+//                }
+//                break;
+//            }
+//
+//            if (p == NULL) {
+//                fprintf(stderr, "Failed to connect\n");
+//                freeaddrinfo(server_info);
+//                close(server_fd);
+//                return;
+//            }
+//
+//            // Get the IPv4 address from the sockaddr structure
+//            struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+//            void *addr = &(ipv4->sin_addr);
+//            char ipstr[INET_ADDRSTRLEN];
+//            inet_ntop(p->ai_family, addr, ipstr, sizeof(ipstr));
+//            printf("IP Address: %s\n", ipstr);
+//
+//            // Assign the obtained address to server_addr
+//            inet_pton(AF_INET, ipstr, &server_addr.sin_addr);
+//
+//            freeaddrinfo(server_info); // Free the memory allocated by getaddrinfo
+//
+//            // Send the modified request to the server
+//            ssize_t bytes_sent = send(server_fd, modified_request, strlen(modified_request), 0);
+//            if (bytes_sent < 0) {
+//                perror("Send error");
+//                close(server_fd);
+//                return;
+//            }
+//
+//            // Receive and print the server's response
+//            char server_response[1024]; // Adjust size as needed
+//            ssize_t server_bytes_received;
+//            while ((server_bytes_received = recv(server_fd, server_response, sizeof(server_response), 0)) > 0) {
+//                print_bytes(server_response, server_bytes_received);
+//
+//                // Send the response back to the client
+//                ssize_t response_sent = send(client_fd, server_response, server_bytes_received, 0);
+//                if (response_sent < 0) {
+//                    perror("Response send error");
+//                    close(server_fd);
+//                    close(client_fd);
+//                    return;
+//                }
+//
+//                // Clear the server_response buffer for the next recv() call
+//                memset(server_response, 0, sizeof(server_response));
+//            }
+//
+//            if (server_bytes_received < 0) {
+//                perror("Server receive error");
+//            }
+//
+//            // Close the connection to the server
+//            close(server_fd);
+//
+//            // Close the client socket
+//            close(client_fd);
+//            return;
+//        } else {
+//            printf("Failed to parse HTTP request\n");
+//            printf("METHOD: %s\n", method);
+//            printf("HOSTNAME: %s\n", hostname);
+//            printf("PORT: %s\n", port);
+//            printf("PATH: %s\n", path);
+//            // Close the client socket (moved to the end)
+//            close(client_fd);
+//            return;
+//        }
+//    }
+//
+//    if (bytes_received < 0) {
+//        perror("Client receive error");
+//    }
+//
+//    // Close the client socket
+//    close(client_fd);
+//}
 
-		"GET http://www.example.com:8080/index.html?foo=1&bar=2 HTTP/1.0\r\n"
-		"Host: www.example.com:8080\r\n"
-		"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:68.0) Gecko/20100101 Firefox/68.0\r\n"
-		"Accept-Language: en-US,en;q=0.5\r\n\r\n",
-
-		"GET http://localhost:1234/home.html HTTP/1.0\r\n"
-		"Host: localhost:1234\r\n"
-		"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:68.0) Gecko/20100101 Firefox/68.0\r\n"
-		"Accept-Language: en-US,en;q=0.5\r\n\r\n",
-
-		"GET http://www.example.com:8080/index.html HTTP/1.0\r\n",
-
-		NULL
-	};
-	
-	for (i = 0; reqs[i] != NULL; i++) {
-		printf("Testing %s", reqs[i]);
-		if (parse_request(reqs[i], method, hostname, port, path)) {
-			printf("METHOD: %s\n", method);
-			printf("HOSTNAME: %s\n", hostname);
-			printf("PORT: %s\n", port);
-			printf("PATH: %s\n", path);
-            printf("REQUEST COMPLETE\n\n");
-		} else {
-			printf("REQUEST INCOMPLETE\n\n");
-		}
-	}
-}
+//void test_parser() {
+//	int i;
+//	char method[16], hostname[64], port[8], path[64];
+//
+//       	char *reqs[] = {
+//		"GET http://www.example.com/index.html HTTP/1.0\r\n"
+//		"Host: www.example.com\r\n"
+//		"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:68.0) Gecko/20100101 Firefox/68.0\r\n"
+//		"Accept-Language: en-US,en;q=0.5\r\n\r\n",
+//
+//		"GET http://www.example.com:8080/index.html?foo=1&bar=2 HTTP/1.0\r\n"
+//		"Host: www.example.com:8080\r\n"
+//		"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:68.0) Gecko/20100101 Firefox/68.0\r\n"
+//		"Accept-Language: en-US,en;q=0.5\r\n\r\n",
+//
+//		"GET http://localhost:1234/home.html HTTP/1.0\r\n"
+//		"Host: localhost:1234\r\n"
+//		"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:68.0) Gecko/20100101 Firefox/68.0\r\n"
+//		"Accept-Language: en-US,en;q=0.5\r\n\r\n",
+//
+//		"GET http://www.example.com:8080/index.html HTTP/1.0\r\n",
+//
+//		NULL
+//	};
+//
+//	for (i = 0; reqs[i] != NULL; i++) {
+//		printf("Testing %s", reqs[i]);
+//		if (parse_request(reqs[i], method, hostname, port, path)) {
+//			printf("METHOD: %s\n", method);
+//			printf("HOSTNAME: %s\n", hostname);
+//			printf("PORT: %s\n", port);
+//			printf("PATH: %s\n", path);
+//            printf("REQUEST COMPLETE\n\n");
+//		} else {
+//			printf("REQUEST INCOMPLETE\n\n");
+//		}
+//	}
+//}
 
 void print_bytes(unsigned char *bytes, int byteslen) {
 	int i, j, byteslen_adjusted;
