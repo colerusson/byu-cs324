@@ -153,6 +153,7 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
     if (end_of_method != NULL) {
         strncpy(method, request, end_of_method - request);
         method[end_of_method - request] = '\0';
+        printf("Method: %s\n", method);
     } else {
         printf("Method extraction failed\n");
         return 0; // Method extraction failed
@@ -168,6 +169,7 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
         char url[url_length + 1];
         strncpy(url, start_of_url, url_length);
         url[url_length] = '\0';
+        printf("URL: %s\n", url);
 
         // Extract hostname
         char *start_of_hostname = strstr(request, "://");
