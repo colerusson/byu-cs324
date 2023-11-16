@@ -169,18 +169,65 @@ void handle_client(int client_fd) {
         // Parse the HTTP request and print its components
         char method[16], hostname[64], port[8], path[64];
         if (parse_request(buffer, method, hostname, port, path)) {
-            printf("METHOD: %s\n", method);
-            printf("HOSTNAME: %s\n", hostname);
-            printf("PORT: %s\n", port);
-            printf("PATH: %s\n", path);
+            // ... (previous code remains unchanged)
+
+            // Create the modified HTTP request to send to the server
+            char modified_request[1024]; // Adjust size as needed
+
+            // Set the HTTP version to 1.0 and include necessary headers
+            snprintf(modified_request, sizeof(modified_request),
+                     "%s %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: %s\r\nConnection: close\r\nProxy-Connection: close\r\n\r\n",
+                     method, path, hostname, user_agent_hdr);
+
+            // Print out the modified HTTP request
+            printf("\nModified HTTP Request:\n");
+            printf("%s", modified_request);
+
+            // Create a socket to communicate with the server
+            int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+            if (server_fd < 0) {
+                perror("Socket creation error");
+                return;
+            }
+
+            // Set up the server address and port to connect to
+            struct sockaddr_in server_addr;
+            memset(&server_addr, 0, sizeof(server_addr));
+            server_addr.sin_family = AF_INET;
+            server_addr.sin_port = htons(atoi(port)); // Convert port to network byte order
+            server_addr.sin_addr.s_addr = inet_addr(hostname);
+
+            // Connect to the server
+            if (connect(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+                perror("Connection error");
+                close(server_fd);
+                return;
+            }
+
+            // Send the modified request to the server
+            ssize_t bytes_sent = send(server_fd, modified_request, strlen(modified_request), 0);
+            if (bytes_sent < 0) {
+                perror("Send error");
+                close(server_fd);
+                return;
+            }
+
+            // Receive and print the server's response (if needed)
+            // ...
+
+            // Close the connection to the server
+            close(server_fd);
+
+            // Close the client socket
+            close(client_fd);
+            break; // Exit loop after processing the request (for this basic example)
         } else {
             printf("Failed to parse HTTP request\n");
         }
-
-        // Close the client socket
-        close(client_fd);
-        break; // Exit loop after processing the request (for this basic example)
     }
+
+    // Close the client socket (moved to the end)
+    close(client_fd);
 }
 
 
