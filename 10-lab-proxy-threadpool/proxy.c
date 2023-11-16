@@ -191,7 +191,7 @@ void handle_client(int client_fd) {
             memset(&server_addr, 0, sizeof(server_addr));
             server_addr.sin_family = AF_INET;
             server_addr.sin_port = htons(atoi(port)); // Convert port to network byte order
-            server_addr.sin_addr.s_addr = inet_addr(hostname);
+            server_addr.sin_addr.s_addr = getaddrinfo(hostname);
 
             // Connect to the server
             if (connect(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
