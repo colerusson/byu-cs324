@@ -141,6 +141,83 @@ int complete_request_received(char *request, ssize_t received_bytes) {
 //    }
 //}
 
+//int parse_request(char *request, ssize_t received_bytes, char *method, char *hostname, char *port, char *path) {
+//    // Check if the request is complete
+//    if (!complete_request_received(request, received_bytes)) {
+//        printf("Incomplete request received\n");
+//        return 0; // Request is incomplete
+//    }
+//
+//    // Extract method
+//    char *end_of_method = strstr(request, " ");
+//    printf("End of method: %s\n", end_of_method);
+//    if (end_of_method != NULL) {
+//        strncpy(method, request, end_of_method - request);
+//        method[end_of_method - request] = '\0';
+//        printf("Method: %s\n", method);
+//    } else {
+//        printf("Method extraction failed\n");
+//        return 0; // Method extraction failed
+//    }
+//
+//    // Find the start of URL (after the first space)
+//    char *start_of_url = end_of_method + 1;
+//
+//    // Extract the URL
+//    char *end_of_url = strstr(start_of_url, " ");
+//    if (end_of_url != NULL) {
+//        int url_length = end_of_url - start_of_url;
+//        char url[url_length + 1];
+//        strncpy(url, start_of_url, url_length);
+//        url[url_length] = '\0';
+//        printf("URL: %s\n", url);
+//
+//        // Extract hostname
+//        char *start_of_hostname = strstr(request, "://");
+//        if (start_of_hostname != NULL) {
+//            start_of_hostname += 3; // Move past "://"
+//            char *end_of_hostname = strchr(start_of_hostname, ':'); // Find the port delimiter ':'
+//            char *end_of_path = strchr(start_of_hostname, '/'); // Find the path delimiter '/'
+//
+//            if (end_of_hostname != NULL && (end_of_path == NULL || end_of_path > end_of_hostname)) {
+//                // Extract hostname when port is present
+//                int hostname_length = end_of_hostname - start_of_hostname;
+//                strncpy(hostname, start_of_hostname, hostname_length);
+//                hostname[hostname_length] = '\0';
+//
+//                // Extract port
+//                int port_length = (end_of_path != NULL ? end_of_path : request + received_bytes) - end_of_hostname - 1;
+//                strncpy(port, end_of_hostname + 1, port_length);
+//                port[port_length] = '\0';
+//            } else {
+//                // Default port if not specified
+//                strcpy(port, "80");
+//                int hostname_length = (end_of_path != NULL ? end_of_path : request + received_bytes) - start_of_hostname;
+//                strncpy(hostname, start_of_hostname, hostname_length);
+//                hostname[hostname_length] = '\0';
+//            }
+//
+//            // Extract path
+//            if (end_of_path != NULL) {
+//                int path_length = request + received_bytes - end_of_path;
+//                strncpy(path, end_of_path, path_length);
+//                path[path_length] = '\0';
+//            } else {
+//                printf("Path extraction failed\n");
+//                return 0; // Path extraction failed
+//            }
+//
+//            return 1; // Parsing successful
+//        } else {
+//            printf("Hostname extraction failed\n");
+//            return 0; // Hostname extraction failed
+//        }
+//    } else {
+//        printf("URL extraction failed\n");
+//        return 0; // URL extraction failed
+//    }
+//}
+
 int parse_request(char *request, ssize_t received_bytes, char *method, char *hostname, char *port, char *path) {
     // Check if the request is complete
     if (!complete_request_received(request, received_bytes)) {
@@ -150,34 +227,37 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
 
     // Extract method
     char *end_of_method = strstr(request, " ");
-    printf("End of method: %s\n", end_of_method);
     if (end_of_method != NULL) {
         strncpy(method, request, end_of_method - request);
         method[end_of_method - request] = '\0';
-        printf("Method: %s\n", method);
     } else {
         printf("Method extraction failed\n");
         return 0; // Method extraction failed
     }
 
-    // Find the start of URL (after the first space)
-    char *start_of_url = end_of_method + 1;
+    // Extract the entire URL (including headers)
+    char *start_of_headers = strstr(request, "\r\n\r\n");
+    if (start_of_headers == NULL) {
+        printf("Headers not found\n");
+        return 0; // Headers not found
+    }
+    // Point to the end of headers
+    start_of_headers += 4;
 
-    // Extract the URL
-    char *end_of_url = strstr(start_of_url, " ");
+    // Parse the URL and headers together
+    char *end_of_url = strstr(request, " ");
     if (end_of_url != NULL) {
-        int url_length = end_of_url - start_of_url;
+        int url_length = end_of_url - request;
         char url[url_length + 1];
-        strncpy(url, start_of_url, url_length);
+        strncpy(url, request, url_length);
         url[url_length] = '\0';
-        printf("URL: %s\n", url);
 
         // Extract hostname
-        char *start_of_hostname = strstr(request, "://");
+        char *start_of_hostname = strstr(url, "://");
         if (start_of_hostname != NULL) {
             start_of_hostname += 3; // Move past "://"
-            char *end_of_hostname = strchr(start_of_hostname, ':'); // Find the port delimiter ':'
-            char *end_of_path = strchr(start_of_hostname, '/'); // Find the path delimiter '/'
+            char *end_of_hostname = strchr(start_of_hostname, ':');
+            char *end_of_path = strchr(start_of_hostname, '/');
 
             if (end_of_hostname != NULL && (end_of_path == NULL || end_of_path > end_of_hostname)) {
                 // Extract hostname when port is present
