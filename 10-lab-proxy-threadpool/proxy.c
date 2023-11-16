@@ -112,29 +112,14 @@ int parse_request(char *request, char *method, char *hostname, char *port, char 
                 strncpy(path, end_of_path, path_length);
                 path[path_length] = '\0';
             } else {
-                // print the current variables to see if they are correct
-                printf("Failed on path extraction\n");
-                printf("hostname: %s\n", hostname);
-                printf("port: %s\n", port);
-                printf("path: %s\n", path);
                 return 0; // Path extraction failed
             }
 
             return 1; // Parsing successful
         } else {
-            // print the current variables to see if they are correct
-            printf("Failed on hostname extraction\n");
-            printf("hostname: %s\n", hostname);
-            printf("port: %s\n", port);
-            printf("path: %s\n", path);
             return 0; // Hostname extraction failed
         }
     } else {
-        // print the current variables to see if they are correct
-        printf("Failed on URL extraction\n");
-        printf("hostname: %s\n", hostname);
-        printf("port: %s\n", port);
-        printf("path: %s\n", path);
         return 0; // URL extraction failed
     }
 }
@@ -291,6 +276,10 @@ void handle_client(int client_fd) {
             return;
         } else {
             printf("Failed to parse HTTP request\n");
+            printf("METHOD: %s\n", method);
+            printf("HOSTNAME: %s\n", hostname);
+            printf("PORT: %s\n", port);
+            printf("PATH: %s\n", path);
             // Close the client socket (moved to the end)
             close(client_fd);
             return;
