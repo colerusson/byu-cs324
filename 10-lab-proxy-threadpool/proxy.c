@@ -125,7 +125,7 @@ void test_parser() {
 			printf("PATH: %s\n", path);
             printf("REQUEST COMPLETE\n\n");
 		} else {
-			printf("REQUEST INCOMPLETE\n");
+			printf("REQUEST INCOMPLETE\n\n");
 		}
 	}
 }
