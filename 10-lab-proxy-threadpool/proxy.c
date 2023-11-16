@@ -150,6 +150,7 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
 
     // Extract method
     char *end_of_method = strstr(request, " ");
+    printf("End of method: %s\n", end_of_method);
     if (end_of_method != NULL) {
         strncpy(method, request, end_of_method - request);
         method[end_of_method - request] = '\0';
