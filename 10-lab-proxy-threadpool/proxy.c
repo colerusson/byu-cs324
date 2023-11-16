@@ -1,5 +1,9 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
 
 /* Recommended max object size */
 #define MAX_OBJECT_SIZE 102400
@@ -8,14 +12,37 @@ static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel M
 
 int complete_request_received(char *);
 int parse_request(char *, char *, char *, char *, char *);
+int open_sfd(int);
+void handle_client(int);
 void test_parser();
 void print_bytes(unsigned char *, int);
 
 
 int main(int argc, char *argv[]) {
-	test_parser();
-	printf("%s\n", user_agent_hdr);
-	return 0;
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    int port = atoi(argv[1]);
+    int server_fd = open_sfd(port);
+
+    while (1) {
+        struct sockaddr_in client_addr;
+        socklen_t client_len = sizeof(client_addr);
+
+        int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+        if (client_fd == -1) {
+            perror("Accept failed");
+            continue;
+        }
+
+        // Handle client's HTTP request
+        handle_client(client_fd);
+    }
+
+    close(server_fd);
+    return 0;
 }
 
 int complete_request_received(char *request) {
@@ -94,6 +121,69 @@ int parse_request(char *request, char *method, char *hostname, char *port, char 
         return 0; // URL extraction failed
     }
 }
+
+int open_sfd(int port) {
+    int sfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sfd == -1) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    int optval = 1;
+    if (setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) == -1) {
+        perror("Setsockopt failed");
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(sfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+        perror("Bind failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(sfd, 10) == -1) {
+        perror("Listen failed");
+        exit(EXIT_FAILURE);
+    }
+
+    return sfd;
+}
+
+void handle_client(int client_fd) {
+    char buffer[1024]; // Adjust buffer size as needed
+    ssize_t bytes_received;
+
+    // Read from the socket until the entire HTTP request is received
+    while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
+        // Print out the received HTTP request
+        print_bytes(buffer, bytes_received);
+
+        // Null-terminate the received data to make it a string
+        buffer[bytes_received] = '\0';
+
+        // Parse the HTTP request and print its components
+        char method[16], hostname[64], port[8], path[64];
+        if (parse_request(buffer, method, hostname, port, path)) {
+            printf("METHOD: %s\n", method);
+            printf("HOSTNAME: %s\n", hostname);
+            printf("PORT: %s\n", port);
+            printf("PATH: %s\n", path);
+        } else {
+            printf("Failed to parse HTTP request\n");
+        }
+
+        // Close the client socket
+        close(client_fd);
+        break; // Exit loop after processing the request (for this basic example)
+    }
+}
+
+
 
 void test_parser() {
 	int i;
