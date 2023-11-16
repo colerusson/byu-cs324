@@ -59,6 +59,7 @@ int complete_request_received(char *request) {
 int parse_request(char *request, char *method, char *hostname, char *port, char *path) {
     // Check if the request is complete
     if (!complete_request_received(request)) {
+        printf("Incomplete request received\n");
         return 0; // Request is incomplete
     }
 
@@ -68,6 +69,7 @@ int parse_request(char *request, char *method, char *hostname, char *port, char 
         strncpy(method, request, end_of_method - request);
         method[end_of_method - request] = '\0';
     } else {
+        printf("Method extraction failed\n");
         return 0; // Method extraction failed
     }
 
@@ -112,14 +114,17 @@ int parse_request(char *request, char *method, char *hostname, char *port, char 
                 strncpy(path, end_of_path, path_length);
                 path[path_length] = '\0';
             } else {
+                printf("Path extraction failed\n");
                 return 0; // Path extraction failed
             }
 
             return 1; // Parsing successful
         } else {
+            printf("Hostname extraction failed\n");
             return 0; // Hostname extraction failed
         }
     } else {
+        printf("URL extraction failed\n");
         return 0; // URL extraction failed
     }
 }
