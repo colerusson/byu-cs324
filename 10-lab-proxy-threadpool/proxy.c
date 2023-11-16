@@ -28,6 +28,11 @@ int complete_request_received(char *request) {
 }
 
 int parse_request(char *request, char *method, char *hostname, char *port, char *path) {
+    // Check if the request is complete
+    if (!complete_request_received(request)) {
+        return 0; // Request is incomplete
+    }
+
     // Extract method
     char *end_of_method = strstr(request, " ");
     if (end_of_method != NULL) {
