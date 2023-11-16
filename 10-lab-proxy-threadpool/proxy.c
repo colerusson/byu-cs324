@@ -134,7 +134,7 @@ void test_parser() {
 	};
 	
 	for (i = 0; reqs[i] != NULL; i++) {
-		printf("Testing %s\n", reqs[i]);
+		printf("Testing %s", reqs[i]);
 		if (parse_request(reqs[i], method, hostname, port, path)) {
 			printf("METHOD: %s\n", method);
 			printf("HOSTNAME: %s\n", hostname);
