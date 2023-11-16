@@ -48,11 +48,15 @@ int main(int argc, char *argv[]) {
 }
 
 int complete_request_received(char *request) {
+    printf("Request content: %s\n");
+    print_bytes(request, strlen(request));
+
     char *end_of_headers = strstr(request, "\r\n\r\n");
     if (end_of_headers != NULL) {
         return 1; // Request is complete
     } else {
-        return 0; // Request is not complete
+        //return 0; // Request is not complete
+        return 1; // testing purposes
     }
 }
 
