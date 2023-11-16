@@ -58,51 +58,34 @@ int parse_request(char *request, char *method, char *hostname, char *port, char 
         if (start_of_hostname != NULL) {
             start_of_hostname += 3;
             char *end_of_hostname = strstr(start_of_hostname, ":");
-            if (end_of_hostname != NULL) {
+            char *end_of_path = strstr(start_of_hostname, "/");
+
+            if (end_of_hostname != NULL && (end_of_path == NULL || end_of_path > end_of_hostname)) {
                 int hostname_length = end_of_hostname - start_of_hostname;
                 strncpy(hostname, start_of_hostname, hostname_length);
                 hostname[hostname_length] = '\0';
-            } else {
-                end_of_hostname = strstr(start_of_hostname, "/");
-                if (end_of_hostname != NULL) {
-                    int hostname_length = end_of_hostname - start_of_hostname;
-                    strncpy(hostname, start_of_hostname, hostname_length);
-                    hostname[hostname_length] = '\0';
-                } else {
-                    return 0; // Hostname extraction failed
-                }
-            }
-        } else {
-            return 0; // Hostname extraction failed
-        }
 
-        // Extract port
-        char *start_of_port = strstr(url, ":");
-        if (start_of_port != NULL) {
-            start_of_port += 1;
-            char *end_of_port = strstr(start_of_port, "/");
-            if (end_of_port != NULL) {
-                int port_length = end_of_port - start_of_port;
-                strncpy(port, start_of_port, port_length);
+                // Extract port
+                int port_length = end_of_path - end_of_hostname - 1;
+                strncpy(port, end_of_hostname + 1, port_length);
                 port[port_length] = '\0';
             } else {
                 return 0; // Port extraction failed
             }
-        } else {
-            return 0; // Port extraction failed
-        }
 
-        // Extract path
-        char *start_of_path = strstr(url, "/");
-        if (start_of_path != NULL) {
-            int path_length = strlen(start_of_path);
-            strncpy(path, start_of_path, path_length);
-            path[path_length] = '\0';
-        } else {
-            return 0; // Path extraction failed
-        }
+            // Extract path
+            if (end_of_path != NULL) {
+                int path_length = strlen(end_of_path);
+                strncpy(path, end_of_path, path_length);
+                path[path_length] = '\0';
+            } else {
+                return 0; // Path extraction failed
+            }
 
-        return 1; // Parsing successful
+            return 1; // Parsing successful
+        } else {
+            return 0; // Hostname extraction failed
+        }
     } else {
         return 0; // URL extraction failed
     }
