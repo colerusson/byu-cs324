@@ -4,6 +4,8 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <netdb.h>
+#include <arpa/inet.h>
 
 /* Recommended max object size */
 #define MAX_OBJECT_SIZE 102400
@@ -186,19 +188,54 @@ void handle_client(int client_fd) {
                 return;
             }
 
-            // Set up the server address and port to connect to
+            // Set up the server address and port to connect to using getaddrinfo
             struct sockaddr_in server_addr;
             memset(&server_addr, 0, sizeof(server_addr));
             server_addr.sin_family = AF_INET;
             server_addr.sin_port = htons(atoi(port)); // Convert port to network byte order
-            server_addr.sin_addr.s_addr = getaddrinfo(hostname);
 
-            // Connect to the server
-            if (connect(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-                perror("Connection error");
+            // Resolve the hostname to an IP address using getaddrinfo
+            struct addrinfo hints, *server_info;
+            memset(&hints, 0, sizeof hints);
+            hints.ai_family = AF_INET; // Use IPv4
+            hints.ai_socktype = SOCK_STREAM;
+
+            int status;
+            if ((status = getaddrinfo(hostname, port, &hints, &server_info)) != 0) {
+                fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
                 close(server_fd);
                 return;
             }
+
+            // Loop through the addresses returned by getaddrinfo until a successful connection is made
+            struct addrinfo *p;
+            for (p = server_info; p != NULL; p = p->ai_next) {
+                if (connect(server_fd, p->ai_addr, p->ai_addrlen) == -1) {
+                    perror("connect");
+                    close(server_fd);
+                    continue;
+                }
+                break;
+            }
+
+            if (p == NULL) {
+                fprintf(stderr, "Failed to connect\n");
+                freeaddrinfo(server_info);
+                close(server_fd);
+                return;
+            }
+
+            // Get the IPv4 address from the sockaddr structure
+            struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+            void *addr = &(ipv4->sin_addr);
+            char ipstr[INET_ADDRSTRLEN];
+            inet_ntop(p->ai_family, addr, ipstr, sizeof(ipstr));
+            printf("IP Address: %s\n", ipstr);
+
+            // Assign the obtained address to server_addr
+            inet_pton(AF_INET, ipstr, &server_addr.sin_addr);
+
+            freeaddrinfo(server_info); // Free the memory allocated by getaddrinfo
 
             // Send the modified request to the server
             ssize_t bytes_sent = send(server_fd, modified_request, strlen(modified_request), 0);
@@ -252,6 +289,106 @@ void handle_client(int client_fd) {
     // Close the client socket
     close(client_fd);
 }
+
+
+//void handle_client(int client_fd) {
+//    char buffer[1024]; // Adjust buffer size as needed
+//    ssize_t bytes_received;
+//
+//    // Read from the socket until the entire HTTP request is received
+//    while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
+//        // Print out the received HTTP request
+//        print_bytes(buffer, bytes_received);
+//
+//        // Null-terminate the received data to make it a string
+//        buffer[bytes_received] = '\0';
+//
+//        // Parse the HTTP request and print its components
+//        char method[16], hostname[64], port[8], path[64];
+//        if (parse_request(buffer, method, hostname, port, path)) {
+//            printf("METHOD: %s\n", method);
+//            printf("HOSTNAME: %s\n", hostname);
+//            printf("PORT: %s\n", port);
+//            printf("PATH: %s\n", path);
+//
+//            // Create the modified HTTP request to send to the server
+//            char modified_request[1024]; // Adjust size as needed
+//            sprintf(modified_request, "GET %s HTTP/1.0\r\nHost: %s:%s\r\nUser-Agent: %s\r\nConnection: close\r\nProxy-Connection: close\r\n\r\n",
+//                    path, hostname, port, user_agent_hdr);
+//
+//            // Create a socket to communicate with the server
+//            int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+//            if (server_fd < 0) {
+//                perror("Socket creation error");
+//                return;
+//            }
+//
+//            // Set up the server address and port to connect to
+//            struct sockaddr_in server_addr;
+//            memset(&server_addr, 0, sizeof(server_addr));
+//            server_addr.sin_family = AF_INET;
+//            server_addr.sin_port = htons(atoi(port)); // Convert port to network byte order
+//            server_addr.sin_addr.s_addr = getaddrinfo(hostname);
+//
+//            // Connect to the server
+//            if (connect(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+//                perror("Connection error");
+//                close(server_fd);
+//                return;
+//            }
+//
+//            // Send the modified request to the server
+//            ssize_t bytes_sent = send(server_fd, modified_request, strlen(modified_request), 0);
+//            if (bytes_sent < 0) {
+//                perror("Send error");
+//                close(server_fd);
+//                return;
+//            }
+//
+//            // Receive and print the server's response
+//            char server_response[1024]; // Adjust size as needed
+//            ssize_t server_bytes_received;
+//            while ((server_bytes_received = recv(server_fd, server_response, sizeof(server_response), 0)) > 0) {
+//                print_bytes(server_response, server_bytes_received);
+//
+//                // Send the response back to the client
+//                ssize_t response_sent = send(client_fd, server_response, server_bytes_received, 0);
+//                if (response_sent < 0) {
+//                    perror("Response send error");
+//                    close(server_fd);
+//                    close(client_fd);
+//                    return;
+//                }
+//
+//                // Clear the server_response buffer for the next recv() call
+//                memset(server_response, 0, sizeof(server_response));
+//            }
+//
+//            if (server_bytes_received < 0) {
+//                perror("Server receive error");
+//            }
+//
+//            // Close the connection to the server
+//            close(server_fd);
+//
+//            // Close the client socket
+//            close(client_fd);
+//            return;
+//        } else {
+//            printf("Failed to parse HTTP request\n");
+//            // Close the client socket (moved to the end)
+//            close(client_fd);
+//            return;
+//        }
+//    }
+//
+//    if (bytes_received < 0) {
+//        perror("Client receive error");
+//    }
+//
+//    // Close the client socket
+//    close(client_fd);
+//}
 
 
 
