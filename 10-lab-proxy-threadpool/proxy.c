@@ -70,7 +70,11 @@ int parse_request(char *request, char *method, char *hostname, char *port, char 
                 strncpy(port, end_of_hostname + 1, port_length);
                 port[port_length] = '\0';
             } else {
-                return 0; // Port extraction failed
+                // Default port if not specified
+                strcpy(port, "80");
+                int hostname_length = (end_of_path != NULL) ? end_of_path - start_of_hostname : strlen(start_of_hostname);
+                strncpy(hostname, start_of_hostname, hostname_length);
+                hostname[hostname_length] = '\0';
             }
 
             // Extract path
