@@ -225,31 +225,27 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
         return 0; // Request is incomplete
     }
 
-    // Extract method
+    // Extract the method
+    char *start_of_method = request;
     char *end_of_method = strstr(request, " ");
     if (end_of_method != NULL) {
-        strncpy(method, request, end_of_method - request);
-        method[end_of_method - request] = '\0';
+        int method_length = end_of_method - start_of_method;
+        strncpy(method, start_of_method, method_length);
+        method[method_length] = '\0';
     } else {
         printf("Method extraction failed\n");
         return 0; // Method extraction failed
     }
 
-    // Extract the entire URL (including headers)
-    char *start_of_headers = strstr(request, "\r\n\r\n");
-    if (start_of_headers == NULL) {
-        printf("Headers not found\n");
-        return 0; // Headers not found
-    }
-    // Point to the end of headers
-    start_of_headers += 4;
+    // Find the start of URL (after the first space)
+    char *start_of_url = end_of_method + 1;
 
-    // Parse the URL and headers together
-    char *end_of_url = strstr(request, " ");
+    // Extract the URL
+    char *end_of_url = strstr(start_of_url, " ");
     if (end_of_url != NULL) {
-        int url_length = end_of_url - request;
+        int url_length = end_of_url - start_of_url;
         char url[url_length + 1];
-        strncpy(url, request, url_length);
+        strncpy(url, start_of_url, url_length);
         url[url_length] = '\0';
 
         // Extract hostname
@@ -266,20 +262,20 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
                 hostname[hostname_length] = '\0';
 
                 // Extract port
-                int port_length = (end_of_path != NULL ? end_of_path : request + received_bytes) - end_of_hostname - 1;
+                int port_length = (end_of_path != NULL ? end_of_path : url + url_length) - end_of_hostname - 1;
                 strncpy(port, end_of_hostname + 1, port_length);
                 port[port_length] = '\0';
             } else {
                 // Default port if not specified
                 strcpy(port, "80");
-                int hostname_length = (end_of_path != NULL ? end_of_path : request + received_bytes) - start_of_hostname;
+                int hostname_length = (end_of_path != NULL ? end_of_path : url + url_length) - start_of_hostname;
                 strncpy(hostname, start_of_hostname, hostname_length);
                 hostname[hostname_length] = '\0';
             }
 
             // Extract path
             if (end_of_path != NULL) {
-                int path_length = request + received_bytes - end_of_path;
+                int path_length = url + url_length - end_of_path;
                 strncpy(path, end_of_path, path_length);
                 path[path_length] = '\0';
             } else {
@@ -297,6 +293,7 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
         return 0; // URL extraction failed
     }
 }
+
 
 int open_sfd(int port) {
     int sfd = socket(AF_INET, SOCK_STREAM, 0);
