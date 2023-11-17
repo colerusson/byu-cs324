@@ -76,6 +76,7 @@ int complete_request_received(char *request, ssize_t received_bytes) {
             return 1; // Request is complete (proper end of headers found)
         } else {
             printf("Printing end of headers incomplete: %s\n", end_of_headers);
+            return 0; // Request is not complete (end of headers not found)
         }
     }
     return 0; // Request is not complete
