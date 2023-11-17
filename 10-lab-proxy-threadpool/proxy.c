@@ -59,111 +59,11 @@ int complete_request_received(char *request, ssize_t received_bytes) {
     return 0; // Request is not complete
 }
 
-//int complete_request_received(char *request, ssize_t received_bytes) {
-//    // Minimum header size (GET /path HTTP/1.x\r\n)
-//    if (received_bytes < 16) {
-//        return 0; // Request is not complete
-//    }
-//
-//    // Find the end of headers
-//    char *end_of_headers = strstr(request, "\r\n\r\n");
-//
-//    // Ensure end_of_headers is not NULL and it's at the expected position
-//    if (end_of_headers != NULL && end_of_headers == request + 14) {
-//        printf("Printing end of headers complete: %s\n", end_of_headers);
-//        printf("Printing request complete: %s\n", request);
-//        return 1; // Request is complete (proper end of headers found)
-//    } else {
-//        printf("Printing end of headers incomplete: %s\n", end_of_headers);
-//        // print request
-//        printf("Printing request incomplete: %s\n", request);
-//        return 0; // Request is not complete (end of headers not found)
-//    }
-//}
-
-
-//int parse_request(char *request, ssize_t received_bytes, char *method, char *hostname, char *port, char *path) {
-//    // Check if the request is complete
-//    if (!complete_request_received(request, received_bytes)) {
-//        printf("Incomplete request received\n");
-//        return 0; // Request is incomplete
-//    }
-//
-//    // Extract the method
-//    char *start_of_method = request;
-//    char *end_of_method = strstr(request, " ");
-//    if (end_of_method != NULL) {
-//        int method_length = end_of_method - start_of_method;
-//        strncpy(method, start_of_method, method_length);
-//        method[method_length] = '\0';
-//    } else {
-//        printf("Method extraction failed\n");
-//        return 0; // Method extraction failed
-//    }
-//
-//    // Find the start of URL (after the first space)
-//    char *start_of_url = end_of_method + 1;
-//
-//    // Extract the URL
-//    char *end_of_url = strstr(start_of_url, " ");
-//    if (end_of_url != NULL) {
-//        int url_length = end_of_url - start_of_url;
-//        char url[url_length + 1];
-//        strncpy(url, start_of_url, url_length);
-//        url[url_length] = '\0';
-//
-//        // Extract hostname
-//        char *start_of_hostname = strstr(url, "://");
-//        if (start_of_hostname != NULL) {
-//            start_of_hostname += 3; // Move past "://"
-//            char *end_of_hostname = strchr(start_of_hostname, ':');
-//            char *end_of_path = strchr(start_of_hostname, '/');
-//
-//            if (end_of_hostname != NULL && (end_of_path == NULL || end_of_path > end_of_hostname)) {
-//                // Extract hostname when port is present
-//                int hostname_length = end_of_hostname - start_of_hostname;
-//                strncpy(hostname, start_of_hostname, hostname_length);
-//                hostname[hostname_length] = '\0';
-//
-//                // Extract port
-//                int port_length = (end_of_path != NULL ? end_of_path : url + url_length) - end_of_hostname - 1;
-//                strncpy(port, end_of_hostname + 1, port_length);
-//                port[port_length] = '\0';
-//            } else {
-//                // Default port if not specified
-//                strcpy(port, "80");
-//                int hostname_length = (end_of_path != NULL ? end_of_path : url + url_length) - start_of_hostname;
-//                strncpy(hostname, start_of_hostname, hostname_length);
-//                hostname[hostname_length] = '\0';
-//            }
-//
-//            // Extract path
-//            if (end_of_path != NULL) {
-//                int path_length = url + url_length - end_of_path;
-//                strncpy(path, end_of_path, path_length);
-//                path[path_length] = '\0';
-//            } else {
-//                printf("Path extraction failed\n");
-//                return 0; // Path extraction failed
-//            }
-//
-//            return 1; // Parsing successful
-//        } else {
-//            printf("Hostname extraction failed\n");
-//            return 0; // Hostname extraction failed
-//        }
-//    } else {
-//        printf("URL extraction failed\n");
-//        return 0; // URL extraction failed
-//    }
-//}
-
 int parse_request(char *request, ssize_t received_bytes, char *method, char *hostname, char *port, char *path) {
     //print_bytes(request, received_bytes);
     printf("Printing Request: ");
     printf("%s", request);
     printf("\n\n");
-
 
     // Check if the request is complete
     if (!complete_request_received(request, received_bytes)) {
@@ -229,38 +129,6 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
         printf("URL not found\n");
         return 0; // URL not found
     }
-}
-
-int open_sfd(int port) {
-    int sfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sfd == -1) {
-        perror("Socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-
-    int optval = 1;
-    if (setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) == -1) {
-        perror("Setsockopt failed");
-        exit(EXIT_FAILURE);
-    }
-
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    if (bind(sfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-        perror("Bind failed");
-        exit(EXIT_FAILURE);
-    }
-
-    if (listen(sfd, 10) == -1) {
-        perror("Listen failed");
-        exit(EXIT_FAILURE);
-    }
-
-    return sfd;
 }
 
 void handle_client(int client_fd) {
@@ -427,6 +295,37 @@ void handle_client(int client_fd) {
     close(client_fd);
 }
 
+int open_sfd(int port) {
+    int sfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sfd == -1) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    int optval = 1;
+    if (setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) == -1) {
+        perror("Setsockopt failed");
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(sfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+        perror("Bind failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(sfd, 10) == -1) {
+        perror("Listen failed");
+        exit(EXIT_FAILURE);
+    }
+
+    return sfd;
+}
 
 //void handle_client(int client_fd) {
 //    char buffer[1024]; // Adjust buffer size as needed
