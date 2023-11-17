@@ -264,7 +264,7 @@ int open_sfd(int port) {
 }
 
 void handle_client(int client_fd) {
-    char buffer[1024]; // Adjust buffer size as needed
+    char buffer[4096]; // Adjust buffer size as needed
     ssize_t bytes_received;
     ssize_t total_received = 0;
     int request_complete = 0;
