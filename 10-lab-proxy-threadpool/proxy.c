@@ -264,7 +264,7 @@ int open_sfd(int port) {
 }
 
 void handle_client(int client_fd) {
-    char buffer[4096]; // Adjust buffer size as needed
+    char buffer[1024]; // Adjust buffer size as needed
     ssize_t bytes_received;
     ssize_t total_received = 0;
     int request_complete = 0;
@@ -287,9 +287,11 @@ void handle_client(int client_fd) {
         printf("Total bytes received: %ld\n", total_received);
 
         // Process the request if it's complete
-        if (request_complete && (recv(client_fd, buffer, sizeof(buffer), 0) == 0)) {
+        if (request_complete) {
             // print if made it here
             printf("Made it here with complete request\n");
+            // print the total bytes received
+            printf("Total bytes received: %ld\n", total_received);
             // Combine all received chunks to form the complete request
             char complete_request[total_received + 1];
             memcpy(complete_request, buffer, total_received);
