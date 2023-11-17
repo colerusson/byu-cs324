@@ -47,40 +47,40 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-//int complete_request_received(char *request, ssize_t received_bytes) {
-//    // Check if we have received at least some data and search for end of headers
-//    if (received_bytes > 0) {
-//        char *end_of_headers = strstr(request, "\r\n\r\n");
-//        if (end_of_headers != NULL) {
-//            printf("Printing end of headers: %s\n", end_of_headers);
-//            return 1; // Request is complete
-//        }
-//    }
-//    return 0; // Request is not complete
-//}
-
 int complete_request_received(char *request, ssize_t received_bytes) {
-    // Check if we have received at least some data
+    // Check if we have received at least some data and search for end of headers
     if (received_bytes > 0) {
-        // Minimum header size (GET /path HTTP/1.x\r\n)
-        if (received_bytes < 16) {
-            return 0; // Request is not complete
-        }
-
-        // Find the end of headers
         char *end_of_headers = strstr(request, "\r\n\r\n");
-
-        // Ensure end_of_headers is not NULL and it's at the expected position
-        if (end_of_headers != NULL && (end_of_headers - request) == 13) {
-            printf("Printing end of headers complete: %s\n", end_of_headers);
-            return 1; // Request is complete (proper end of headers found)
-        } else {
-            printf("Printing end of headers incomplete: %s\n", end_of_headers);
-            return 0; // Request is not complete (end of headers not found)
+        if (end_of_headers != NULL) {
+            printf("Printing end of headers: %s\n", end_of_headers);
+            return 1; // Request is complete
         }
     }
     return 0; // Request is not complete
 }
+
+//int complete_request_received(char *request, ssize_t received_bytes) {
+//    // Minimum header size (GET /path HTTP/1.x\r\n)
+//    if (received_bytes < 16) {
+//        return 0; // Request is not complete
+//    }
+//
+//    // Find the end of headers
+//    char *end_of_headers = strstr(request, "\r\n\r\n");
+//
+//    // Ensure end_of_headers is not NULL and it's at the expected position
+//    if (end_of_headers != NULL && end_of_headers == request + 14) {
+//        printf("Printing end of headers complete: %s\n", end_of_headers);
+//        printf("Printing request complete: %s\n", request);
+//        return 1; // Request is complete (proper end of headers found)
+//    } else {
+//        printf("Printing end of headers incomplete: %s\n", end_of_headers);
+//        // print request
+//        printf("Printing request incomplete: %s\n", request);
+//        return 0; // Request is not complete (end of headers not found)
+//    }
+//}
+
 
 //int parse_request(char *request, ssize_t received_bytes, char *method, char *hostname, char *port, char *path) {
 //    // Check if the request is complete
