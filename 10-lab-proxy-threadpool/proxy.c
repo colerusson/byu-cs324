@@ -152,7 +152,9 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
     }
 
     // Skip the `-b 1` part if present
+    printf("request: %s\n", request);
     char *start_of_path = strstr(request, " -b ");
+    printf("start_of_path: %s\n", start_of_path);
     if (start_of_path != NULL) {
         start_of_path += 4; // Move past " -b "
         char *end_of_path = strstr(start_of_path, " ");
@@ -165,8 +167,7 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
             return 0; // Path extraction failed
         }
     } else {
-        printf("'-b' parameter not found\n");
-        return 0; // '-b' parameter not found
+        start_of_path = request;
     }
 
     // Extract the URL if it exists after the '-b' parameter
