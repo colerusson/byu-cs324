@@ -277,6 +277,9 @@ void handle_client(int client_fd) {
         // Check if the request is complete by calling the modified function
         request_complete = complete_request_received(buffer, total_received);
 
+        // print the total bytes received
+        printf("Total bytes received: %ld\n", total_received);
+
         // Process the request if it's complete
         if (request_complete) {
             // Combine all received chunks to form the complete request
