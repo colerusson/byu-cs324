@@ -60,14 +60,23 @@ int main(int argc, char *argv[]) {
 //}
 
 int complete_request_received(char *request, ssize_t received_bytes) {
-    // Check if we have received at least some data and search for end of headers
+    // Check if we have received at least some data
     if (received_bytes > 0) {
+        // Minimum header size (GET /path HTTP/1.x\r\n)
+        if (received_bytes < 16) {
+            return 0; // Request is not complete
+        }
+
+        // Find the end of headers
         char *end_of_headers = strstr(request, "\r\n\r\n");
-        if (end_of_headers != NULL && (end_of_headers - request) < received_bytes - 4) {
+
+        // Ensure end_of_headers is not NULL and it's at the expected position
+        if (end_of_headers != NULL && (end_of_headers - request) == 13) {
             printf("Printing end of headers complete: %s\n", end_of_headers);
             return 1; // Request is complete (proper end of headers found)
+        } else {
+            printf("Printing end of headers incomplete: %s\n", end_of_headers);
         }
-        printf("Printing end of headers incomplete: %s\n", end_of_headers);
     }
     return 0; // Request is not complete
 }
