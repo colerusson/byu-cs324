@@ -151,27 +151,8 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
         return 0; // Method extraction failed
     }
 
-    // Skip the `-b 1` part if present
-    printf("request: %s\n", request);
-    char *start_of_path = strstr(request, " -b ");
-    printf("start_of_path: %s\n", start_of_path);
-    if (start_of_path != NULL) {
-        start_of_path += 4; // Move past " -b "
-        char *end_of_path = strstr(start_of_path, " ");
-        if (end_of_path != NULL) {
-            int path_length = end_of_path - start_of_path;
-            strncpy(path, start_of_path, path_length);
-            path[path_length] = '\0';
-        } else {
-            printf("Path extraction failed\n");
-            return 0; // Path extraction failed
-        }
-    } else {
-        start_of_path = request;
-    }
-
-    // Extract the URL if it exists after the '-b' parameter
-    char *start_of_url = strstr(start_of_path, "http://");
+    // Extract the URL
+    char *start_of_url = strstr(request, "http://");
     if (start_of_url != NULL) {
         char *end_of_url = strstr(start_of_url, " ");
         if (end_of_url != NULL) {
@@ -215,8 +196,8 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
             return 0; // URL extraction failed
         }
     } else {
-        printf("URL not found after '-b' parameter\n");
-        return 0; // URL not found after '-b' parameter
+        printf("URL not found\n");
+        return 0; // URL not found
     }
 }
 
