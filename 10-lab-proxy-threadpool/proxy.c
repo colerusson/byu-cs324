@@ -37,33 +37,6 @@ int buffer_in = 0;
 int buffer_out = 0;
 
 
-//int main(int argc, char *argv[]) {
-//    if (argc != 2) {
-//        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
-//        exit(EXIT_FAILURE);
-//    }
-//
-//    int port = atoi(argv[1]);
-//    int server_fd = open_sfd(port);
-//
-//    while (1) {
-//        struct sockaddr_in client_addr;
-//        socklen_t client_len = sizeof(client_addr);
-//
-//        int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
-//        if (client_fd == -1) {
-//            perror("Accept failed");
-//            continue;
-//        }
-//
-//        // Handle client's HTTP request
-//        handle_client(client_fd, -1);
-//    }
-//
-//    close(server_fd);
-//    return 0;
-//}
-
 int main(int argc, char *argv[]) {
     if (argc != 2) {
         fprintf(stderr, "Usage: %s <port>\n", argv[0]);
@@ -72,17 +45,6 @@ int main(int argc, char *argv[]) {
 
     int port = atoi(argv[1]);
     int server_fd = open_sfd(port);
-
-    // Initialize mutex and condition variable
-    pthread_mutex_init(&mutex, NULL);
-    pthread_cond_init(&cond_var, NULL);
-
-    // Create and initialize threads
-    pthread_t threads[NUM_THREADS];
-
-    for (int i = 0; i < NUM_THREADS; ++i) {
-        pthread_create(&threads[i], NULL, thread_function, NULL);
-    }
 
     while (1) {
         struct sockaddr_in client_addr;
@@ -94,32 +56,11 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        pthread_mutex_lock(&mutex);
-
-        while (buffer_count == MAX_BUFFER_SIZE) {
-            pthread_mutex_unlock(&mutex);
-            usleep(100);
-            pthread_mutex_lock(&mutex);
-        }
-
-        buffer[buffer_in] = client_fd;
-        buffer_in = (buffer_in + 1) % MAX_BUFFER_SIZE;
-        buffer_count++;
-
-        pthread_cond_signal(&cond_var);
-        pthread_mutex_unlock(&mutex);
+        // Handle client's HTTP request
+        handle_client(client_fd, -1);
     }
 
-    // Join threads after work is done
-    for (int i = 0; i < NUM_THREADS; ++i) {
-        pthread_join(threads[i], NULL);
-    }
-
-    // Cleanup resources
-    pthread_mutex_destroy(&mutex);
-    pthread_cond_destroy(&cond_var);
     close(server_fd);
-
     return 0;
 }
 
