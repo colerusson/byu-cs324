@@ -271,6 +271,9 @@ void handle_client(int client_fd) {
 
     // Read from the socket until the entire HTTP request is received
     while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
+        // print the bytes received
+        printf("Bytes received: %ld\n", bytes_received);
+
         // Accumulate received data
         total_received += bytes_received;
 
