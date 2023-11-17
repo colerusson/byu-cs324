@@ -285,6 +285,8 @@ void handle_client(int client_fd) {
 
         // Process the request if it's complete
         if (request_complete) {
+            // print if made it here
+            printf("Made it here with complete request\n");
             // Combine all received chunks to form the complete request
             char complete_request[total_received + 1];
             memcpy(complete_request, buffer, total_received);
