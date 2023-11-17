@@ -136,6 +136,7 @@ int complete_request_received(char *request, ssize_t received_bytes) {
 
 int parse_request(char *request, ssize_t received_bytes, char *method, char *hostname, char *port, char *path) {
     print_bytes(request, received_bytes);
+    printf(request);
 
     // Check if the request is complete
     if (!complete_request_received(request, received_bytes)) {
