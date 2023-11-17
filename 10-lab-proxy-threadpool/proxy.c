@@ -52,6 +52,7 @@ int complete_request_received(char *request, ssize_t received_bytes) {
     if (received_bytes > 0) {
         char *end_of_headers = strstr(request, "\r\n\r\n");
         if (end_of_headers != NULL) {
+            printf("Printing end of headers: %s\n", end_of_headers);
             return 1; // Request is complete
         }
     }
