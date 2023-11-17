@@ -295,6 +295,9 @@ void handle_client(int client_fd) {
             memcpy(complete_request, buffer, total_received);
             complete_request[total_received] = '\0';
 
+            // print the complete request
+            printf("Complete request: %s\n", complete_request);
+
             // Parse the complete request by passing total_received
             char method[16], hostname[64], port[8], path[64];
             if (parse_request(complete_request, total_received, method, hostname, port, path)) {
