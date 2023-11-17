@@ -161,9 +161,11 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
         char url[url_length + 1];
         strncpy(url, start_of_url, url_length);
         url[url_length] = '\0';
+        printf("url: %s\n", url);
 
         // Skip the `-b 1` part if present
         char *start_of_path = strstr(url, " -b ");
+        printf("start_of_path: %s\n", start_of_path);
         if (start_of_path != NULL) {
             start_of_path += 4; // Move past " -b "
             char *end_of_path = strstr(start_of_path, " ");
@@ -171,6 +173,7 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
                 int path_length = end_of_path - start_of_path;
                 strncpy(path, start_of_path, path_length);
                 path[path_length] = '\0';
+                printf("path: %s\n", path);
                 return 1; // Parsing successful
             } else {
                 printf("Path extraction failed\n");
@@ -219,8 +222,6 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
         return 0; // URL extraction failed
     }
 }
-
-
 
 int open_sfd(int port) {
     int sfd = socket(AF_INET, SOCK_STREAM, 0);
