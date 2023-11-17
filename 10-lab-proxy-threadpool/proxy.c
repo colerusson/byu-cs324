@@ -6,19 +6,63 @@
 #include <unistd.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 /* Recommended max object size */
 #define MAX_OBJECT_SIZE 102400
+#define MAX_BUFFER_SIZE 5
+#define NUM_THREADS 8
 
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0";
 
 int complete_request_received(char *, ssize_t);
+void *thread_function(void *arg);
 int parse_request(char *, ssize_t, char *, char *, char *, char *);
 int open_sfd(int);
-void handle_client(int);
+void handle_client(int, int);
 void test_parser();
 void print_bytes(unsigned char *, int);
 
+// Define a struct to hold information for each thread if needed
+typedef struct {
+    int thread_id; // Example: Add more fields as required
+} ThreadInfo;
+
+// Declare shared variables like mutexes, condition variables, and buffer (queue)
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t cond_var = PTHREAD_COND_INITIALIZER;
+int buffer[MAX_BUFFER_SIZE];
+int buffer_count = 0;
+int buffer_in = 0;
+int buffer_out = 0;
+
+
+//int main(int argc, char *argv[]) {
+//    if (argc != 2) {
+//        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+//        exit(EXIT_FAILURE);
+//    }
+//
+//    int port = atoi(argv[1]);
+//    int server_fd = open_sfd(port);
+//
+//    while (1) {
+//        struct sockaddr_in client_addr;
+//        socklen_t client_len = sizeof(client_addr);
+//
+//        int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+//        if (client_fd == -1) {
+//            perror("Accept failed");
+//            continue;
+//        }
+//
+//        // Handle client's HTTP request
+//        handle_client(client_fd, -1);
+//    }
+//
+//    close(server_fd);
+//    return 0;
+//}
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -28,6 +72,17 @@ int main(int argc, char *argv[]) {
 
     int port = atoi(argv[1]);
     int server_fd = open_sfd(port);
+
+    // Initialize mutex and condition variable
+    pthread_mutex_init(&mutex, NULL);
+    pthread_cond_init(&cond_var, NULL);
+
+    // Create and initialize threads
+    pthread_t threads[NUM_THREADS];
+
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        pthread_create(&threads[i], NULL, thread_function, NULL);
+    }
 
     while (1) {
         struct sockaddr_in client_addr;
@@ -39,12 +94,56 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        // Handle client's HTTP request
-        handle_client(client_fd);
+        pthread_mutex_lock(&mutex);
+
+        while (buffer_count == MAX_BUFFER_SIZE) {
+            pthread_mutex_unlock(&mutex);
+            usleep(100);
+            pthread_mutex_lock(&mutex);
+        }
+
+        buffer[buffer_in] = client_fd;
+        buffer_in = (buffer_in + 1) % MAX_BUFFER_SIZE;
+        buffer_count++;
+
+        pthread_cond_signal(&cond_var);
+        pthread_mutex_unlock(&mutex);
     }
 
+    // Join threads after work is done
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        pthread_join(threads[i], NULL);
+    }
+
+    // Cleanup resources
+    pthread_mutex_destroy(&mutex);
+    pthread_cond_destroy(&cond_var);
     close(server_fd);
+
     return 0;
+}
+
+_Noreturn void *thread_function(void *arg) {
+    ThreadInfo *thread_info = (ThreadInfo *)arg;
+    int tid = thread_info->thread_id;
+
+    while (1) {
+        pthread_mutex_lock(&mutex);
+        while (buffer_count == 0) {
+            pthread_cond_wait(&cond_var, &mutex);
+        }
+
+        int client_fd = buffer[buffer_out];
+        buffer_out = (buffer_out + 1) % MAX_BUFFER_SIZE;
+        buffer_count--;
+
+        pthread_mutex_unlock(&mutex);
+
+        // Handle the client request using handle_client function
+        handle_client(client_fd, tid); // Pass thread ID if needed
+
+        close(client_fd);
+    }
 }
 
 int complete_request_received(char *request, ssize_t received_bytes) {
@@ -131,7 +230,7 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
     }
 }
 
-void handle_client(int client_fd) {
+void handle_client(int client_fd, int thread_id) {
     char buffer[1024]; // Adjust buffer size as needed
     ssize_t bytes_received;
     ssize_t total_received = 0;
@@ -139,49 +238,30 @@ void handle_client(int client_fd) {
 
     // Read from the socket until the entire HTTP request is received
     while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
-        // print the bytes received
-        printf("Bytes received: %ld\n", bytes_received);
-
         // Accumulate received data
         total_received += bytes_received;
 
         // Check if the request is complete by calling the modified function
         request_complete = complete_request_received(buffer, total_received);
 
-        // print if request is complete
-        printf("Request complete: %d\n", request_complete);
-
-        // print the total bytes received
-        printf("Total bytes received: %ld\n", total_received);
-
         // Process the request if it's complete
         if (request_complete) {
-            // print if made it here
-            printf("Made it here with complete request\n");
-            // print the total bytes received
-            printf("Total bytes received: %ld\n", total_received);
             // Combine all received chunks to form the complete request
             char complete_request[total_received + 1];
             memcpy(complete_request, buffer, total_received);
             complete_request[total_received] = '\0';
 
-            // print the complete request
-            printf("Complete request: %s\n", complete_request);
-
             // Parse the complete request by passing total_received
             char method[16], hostname[64], port[8], path[64];
             if (parse_request(complete_request, total_received, method, hostname, port, path)) {
-                printf("METHOD: %s\n", method);
-                printf("HOSTNAME: %s\n", hostname);
-                printf("PORT: %s\n", port);
-                printf("PATH: %s\n", path);
+                printf("Thread %d: Method: %s, Hostname: %s, Port: %s, Path: %s\n", thread_id, method, hostname, port, path);
 
                 // Create the modified HTTP request to send to the server
                 char modified_request[1024]; // Adjust size as needed
                 sprintf(modified_request, "GET %s HTTP/1.0\r\nHost: %s:%s\r\nUser-Agent: %s\r\nConnection: close\r\nProxy-Connection: close\r\n\r\n",
                         path, hostname, port, user_agent_hdr);
 
-                // Create a socket to communicate with the server
+                // Create a socket to communicate with the server and forward the request
                 int server_fd = socket(AF_INET, SOCK_STREAM, 0);
                 if (server_fd < 0) {
                     perror("Socket creation error");
@@ -225,18 +305,6 @@ void handle_client(int client_fd) {
                     return;
                 }
 
-                // Get the IPv4 address from the sockaddr structure
-                struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
-                void *addr = &(ipv4->sin_addr);
-                char ipstr[INET_ADDRSTRLEN];
-                inet_ntop(p->ai_family, addr, ipstr, sizeof(ipstr));
-                printf("IP Address: %s\n", ipstr);
-
-                // Assign the obtained address to server_addr
-                inet_pton(AF_INET, ipstr, &server_addr.sin_addr);
-
-                freeaddrinfo(server_info); // Free the memory allocated by getaddrinfo
-
                 // Send the modified request to the server
                 ssize_t bytes_sent = send(server_fd, modified_request, strlen(modified_request), 0);
                 if (bytes_sent < 0) {
@@ -245,13 +313,10 @@ void handle_client(int client_fd) {
                     return;
                 }
 
-                // Receive and print the server's response
+                // Receive and forward the server's response to the client
                 char server_response[1024]; // Adjust size as needed
                 ssize_t server_bytes_received;
                 while ((server_bytes_received = recv(server_fd, server_response, sizeof(server_response), 0)) > 0) {
-                    print_bytes(server_response, server_bytes_received);
-
-                    // Send the response back to the client
                     ssize_t response_sent = send(client_fd, server_response, server_bytes_received, 0);
                     if (response_sent < 0) {
                         perror("Response send error");
@@ -260,7 +325,6 @@ void handle_client(int client_fd) {
                         return;
                     }
 
-                    // Clear the server_response buffer for the next recv() call
                     memset(server_response, 0, sizeof(server_response));
                 }
 
@@ -275,11 +339,7 @@ void handle_client(int client_fd) {
                 close(client_fd);
                 return;
             } else {
-                printf("Failed to parse HTTP request\n");
-                printf("METHOD: %s\n", method);
-                printf("HOSTNAME: %s\n", hostname);
-                printf("PORT: %s\n", port);
-                printf("PATH: %s\n", path);
+                printf("Thread %d: Failed to parse HTTP request\n", thread_id);
                 // Close the client socket (moved to the end)
                 close(client_fd);
                 return;
@@ -295,38 +355,6 @@ void handle_client(int client_fd) {
     close(client_fd);
 }
 
-int open_sfd(int port) {
-    int sfd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sfd == -1) {
-        perror("Socket creation failed");
-        exit(EXIT_FAILURE);
-    }
-
-    int optval = 1;
-    if (setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) == -1) {
-        perror("Setsockopt failed");
-        exit(EXIT_FAILURE);
-    }
-
-    struct sockaddr_in addr;
-    memset(&addr, 0, sizeof(addr));
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-    if (bind(sfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
-        perror("Bind failed");
-        exit(EXIT_FAILURE);
-    }
-
-    if (listen(sfd, 10) == -1) {
-        perror("Listen failed");
-        exit(EXIT_FAILURE);
-    }
-
-    return sfd;
-}
-
 //void handle_client(int client_fd) {
 //    char buffer[1024]; // Adjust buffer size as needed
 //    ssize_t bytes_received;
@@ -335,18 +363,34 @@ int open_sfd(int port) {
 //
 //    // Read from the socket until the entire HTTP request is received
 //    while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
+//        // print the bytes received
+//        printf("Bytes received: %ld\n", bytes_received);
+//
 //        // Accumulate received data
 //        total_received += bytes_received;
 //
 //        // Check if the request is complete by calling the modified function
 //        request_complete = complete_request_received(buffer, total_received);
 //
+//        // print if request is complete
+//        printf("Request complete: %d\n", request_complete);
+//
+//        // print the total bytes received
+//        printf("Total bytes received: %ld\n", total_received);
+//
 //        // Process the request if it's complete
 //        if (request_complete) {
+//            // print if made it here
+//            printf("Made it here with complete request\n");
+//            // print the total bytes received
+//            printf("Total bytes received: %ld\n", total_received);
 //            // Combine all received chunks to form the complete request
 //            char complete_request[total_received + 1];
 //            memcpy(complete_request, buffer, total_received);
 //            complete_request[total_received] = '\0';
+//
+//            // print the complete request
+//            printf("Complete request: %s\n", complete_request);
 //
 //            // Parse the complete request by passing total_received
 //            char method[16], hostname[64], port[8], path[64];
@@ -475,44 +519,37 @@ int open_sfd(int port) {
 //    close(client_fd);
 //}
 
-//void test_parser() {
-//	int i;
-//	char method[16], hostname[64], port[8], path[64];
-//
-//       	char *reqs[] = {
-//		"GET http://www.example.com/index.html HTTP/1.0\r\n"
-//		"Host: www.example.com\r\n"
-//		"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:68.0) Gecko/20100101 Firefox/68.0\r\n"
-//		"Accept-Language: en-US,en;q=0.5\r\n\r\n",
-//
-//		"GET http://www.example.com:8080/index.html?foo=1&bar=2 HTTP/1.0\r\n"
-//		"Host: www.example.com:8080\r\n"
-//		"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:68.0) Gecko/20100101 Firefox/68.0\r\n"
-//		"Accept-Language: en-US,en;q=0.5\r\n\r\n",
-//
-//		"GET http://localhost:1234/home.html HTTP/1.0\r\n"
-//		"Host: localhost:1234\r\n"
-//		"User-Agent: Mozilla/5.0 (X11; Linux x86_64; rv:68.0) Gecko/20100101 Firefox/68.0\r\n"
-//		"Accept-Language: en-US,en;q=0.5\r\n\r\n",
-//
-//		"GET http://www.example.com:8080/index.html HTTP/1.0\r\n",
-//
-//		NULL
-//	};
-//
-//	for (i = 0; reqs[i] != NULL; i++) {
-//		printf("Testing %s", reqs[i]);
-//		if (parse_request(reqs[i], method, hostname, port, path)) {
-//			printf("METHOD: %s\n", method);
-//			printf("HOSTNAME: %s\n", hostname);
-//			printf("PORT: %s\n", port);
-//			printf("PATH: %s\n", path);
-//            printf("REQUEST COMPLETE\n\n");
-//		} else {
-//			printf("REQUEST INCOMPLETE\n\n");
-//		}
-//	}
-//}
+int open_sfd(int port) {
+    int sfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sfd == -1) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
+
+    int optval = 1;
+    if (setsockopt(sfd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) == -1) {
+        perror("Setsockopt failed");
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(sfd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+        perror("Bind failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(sfd, 10) == -1) {
+        perror("Listen failed");
+        exit(EXIT_FAILURE);
+    }
+
+    return sfd;
+}
 
 void print_bytes(unsigned char *bytes, int byteslen) {
 	int i, j, byteslen_adjusted;
