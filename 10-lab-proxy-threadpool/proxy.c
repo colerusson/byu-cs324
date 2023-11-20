@@ -7,19 +7,61 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <semaphore.h>
 
 /* Recommended max object size */
 #define MAX_OBJECT_SIZE 102400
 #define MAX_BUFFER_SIZE 1024
+#define BUFFER_SIZE 5
+#define NUM_THREADS 8
+
+sem_t empty_slots, full_slots;
+pthread_mutex_t buffer_lock;
+
+// Define a structure to hold socket descriptors in the buffer
+typedef struct {
+    int client_fd;
+} BufferItem;
+
+BufferItem buffer[BUFFER_SIZE];
+int in = 0, out = 0;
 
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0";
 
 int complete_request_received(char *, ssize_t);
+_Noreturn void *thread_function(void *);
 int parse_request(char *, char *, char *, char *, char *);
 int open_sfd(int);
 void handle_client(int);
 void test_parser();
 void print_bytes(unsigned char *, int);
+
+//int main(int argc, char *argv[]) {
+//    if (argc != 2) {
+//        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+//        exit(EXIT_FAILURE);
+//    }
+//
+//    int port = atoi(argv[1]);
+//    int server_fd = open_sfd(port);
+//
+//    while (1) {
+//        struct sockaddr_in client_addr;
+//        socklen_t client_len = sizeof(client_addr);
+//
+//        int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+//        if (client_fd == -1) {
+//            perror("Accept failed");
+//            continue;
+//        }
+//
+//        // Handle client's HTTP request
+//        handle_client(client_fd);
+//    }
+//
+//    close(server_fd);
+//    return 0;
+//}
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -29,6 +71,17 @@ int main(int argc, char *argv[]) {
 
     int port = atoi(argv[1]);
     int server_fd = open_sfd(port);
+
+    // Initialize semaphores and mutex
+    sem_init(&empty_slots, 0, BUFFER_SIZE);
+    sem_init(&full_slots, 0, 0);
+    pthread_mutex_init(&buffer_lock, NULL);
+
+    // Create consumer threads
+    pthread_t threads[NUM_THREADS];
+    for (int i = 0; i < NUM_THREADS; ++i) {
+        pthread_create(&threads[i], NULL, thread_function, NULL);
+    }
 
     while (1) {
         struct sockaddr_in client_addr;
@@ -40,13 +93,41 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        // Handle client's HTTP request
-        handle_client(client_fd);
+        sem_wait(&empty_slots);
+        pthread_mutex_lock(&buffer_lock);
+
+        // Produce item - Add client_fd to buffer (queue)
+        buffer[in].client_fd = client_fd;
+        in = (in + 1) % BUFFER_SIZE;
+
+        pthread_mutex_unlock(&buffer_lock);
+        sem_post(&full_slots);
     }
 
+    // Cleanup code
     close(server_fd);
     return 0;
 }
+
+// Function executed by each thread
+_Noreturn void *thread_function(void *arg) {
+    while (1) {
+        sem_wait(&full_slots);
+        pthread_mutex_lock(&buffer_lock);
+
+        // Consume item from buffer (queue)
+        int client_fd = buffer[out].client_fd;
+        out = (out + 1) % BUFFER_SIZE;
+
+        pthread_mutex_unlock(&buffer_lock);
+        sem_post(&empty_slots);
+
+        // Handle the client request using client_fd
+        handle_client(client_fd);
+        close(client_fd);
+    }
+}
+
 
 int complete_request_received(char *request, ssize_t received_bytes) {
     // Check if we have received at least some data and search for end of headers
