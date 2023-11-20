@@ -208,7 +208,7 @@ int parse_request(char *request, char *method, char *hostname, char *port, char 
 //}
 
 void handle_client(int client_fd) {
-    char buffer[MAX_BUFFER_SIZE]; // Adjust buffer size as needed
+    char buffer[1024]; // Adjust buffer size as needed
     char method[16], hostname[64], port[8], path[64];
     char wholeRequest[500];
     int startPoint = 0;
