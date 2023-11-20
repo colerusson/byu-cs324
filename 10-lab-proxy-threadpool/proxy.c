@@ -7,17 +7,18 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <pthread.h>
+#include <limits.h>
 
 /* Recommended max object size */
 #define MAX_OBJECT_SIZE 102400
-#define MAX_BUFFER_SIZE 5
+#define MAX_BUFFER_SIZE INT_MAX
 
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0";
 
 int complete_request_received(char *, ssize_t);
 int parse_request(char *, ssize_t, char *, char *, char *, char *);
 int open_sfd(int);
-void handle_client(int, int);
+void handle_client(int);
 void test_parser();
 void print_bytes(unsigned char *, int);
 
@@ -42,7 +43,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Handle client's HTTP request
-        handle_client(client_fd, -1);
+        handle_client(client_fd);
     }
 
     close(server_fd);
@@ -133,8 +134,8 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
     }
 }
 
-void handle_client(int client_fd, int thread_id) {
-    char buffer[1024]; // Adjust buffer size as needed
+void handle_client(int client_fd) {
+    char buffer[MAX_BUFFER_SIZE]; // Adjust buffer size as needed
     ssize_t bytes_received;
     ssize_t total_received = 0;
     int request_complete = 0;
@@ -157,7 +158,7 @@ void handle_client(int client_fd, int thread_id) {
             // Parse the complete request by passing total_received
             char method[16], hostname[64], port[8], path[64];
             if (parse_request(complete_request, total_received, method, hostname, port, path)) {
-                printf("Thread %d: Method: %s, Hostname: %s, Port: %s, Path: %s\n", thread_id, method, hostname, port, path);
+                printf("Method: %s, Hostname: %s, Port: %s, Path: %s\n", method, hostname, port, path);
 
                 // Create the modified HTTP request to send to the server
                 char modified_request[1024]; // Adjust size as needed
@@ -242,7 +243,7 @@ void handle_client(int client_fd, int thread_id) {
                 close(client_fd);
                 return;
             } else {
-                printf("Thread %d: Failed to parse HTTP request\n", thread_id);
+                printf("Failed to parse HTTP request\n");
                 // Close the client socket (moved to the end)
                 close(client_fd);
                 return;
