@@ -10,7 +10,6 @@
 #include <semaphore.h>
 
 /* Recommended max object size */
-#define MAX_OBJECT_SIZE 102400
 #define MAX_BUFFER_SIZE 1024
 #define BUFFER_SIZE 5
 #define NUM_THREADS 8
@@ -28,40 +27,11 @@ int in = 0, out = 0;
 
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0";
 
-int complete_request_received(char *, ssize_t);
 _Noreturn void *thread_function(void *);
 int parse_request(char *, char *, char *, char *, char *);
 int open_sfd(int);
 void handle_client(int);
 void test_parser();
-void print_bytes(unsigned char *, int);
-
-//int main(int argc, char *argv[]) {
-//    if (argc != 2) {
-//        fprintf(stderr, "Usage: %s <port>\n", argv[0]);
-//        exit(EXIT_FAILURE);
-//    }
-//
-//    int port = atoi(argv[1]);
-//    int server_fd = open_sfd(port);
-//
-//    while (1) {
-//        struct sockaddr_in client_addr;
-//        socklen_t client_len = sizeof(client_addr);
-//
-//        int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
-//        if (client_fd == -1) {
-//            perror("Accept failed");
-//            continue;
-//        }
-//
-//        // Handle client's HTTP request
-//        handle_client(client_fd);
-//    }
-//
-//    close(server_fd);
-//    return 0;
-//}
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -126,19 +96,6 @@ _Noreturn void *thread_function(void *arg) {
         handle_client(client_fd);
         close(client_fd);
     }
-}
-
-
-int complete_request_received(char *request, ssize_t received_bytes) {
-    // Check if we have received at least some data and search for end of headers
-    if (received_bytes > 0) {
-        char *end_of_headers = strstr(request, "\r\n\r\n");
-        if (end_of_headers != NULL) {
-            printf("Printing end of headers: %s\n", end_of_headers);
-            return 1; // Request is complete
-        }
-    }
-    return 0; // Request is not complete
 }
 
 int parse_request(char *request, char *method, char *hostname, char *port, char *path) {
@@ -224,8 +181,9 @@ void handle_client(int client_fd) {
         }
     }
 
+    // Null terminate the request string
     wholeRequest[startPoint] = '\0';
-    // Read from the socket until the entire HTTP request is received
+
     if (parse_request(wholeRequest, method, hostname, port, path)) {
         printf("Method: %s, Hostname: %s, Port: %s, Path: %s\n", method, hostname, port, path);
 
@@ -356,44 +314,4 @@ int open_sfd(int port) {
     }
 
     return sfd;
-}
-
-void print_bytes(unsigned char *bytes, int byteslen) {
-	int i, j, byteslen_adjusted;
-
-	if (byteslen % 8) {
-		byteslen_adjusted = ((byteslen / 8) + 1) * 8;
-	} else {
-		byteslen_adjusted = byteslen;
-	}
-	for (i = 0; i < byteslen_adjusted + 1; i++) {
-		if (!(i % 8)) {
-			if (i > 0) {
-				for (j = i - 8; j < i; j++) {
-					if (j >= byteslen_adjusted) {
-						printf("  ");
-					} else if (j >= byteslen) {
-						printf("  ");
-					} else if (bytes[j] >= '!' && bytes[j] <= '~') {
-						printf(" %c", bytes[j]);
-					} else {
-						printf(" .");
-					}
-				}
-			}
-			if (i < byteslen_adjusted) {
-				printf("\n%02X: ", i);
-			}
-		} else if (!(i % 4)) {
-			printf(" ");
-		}
-		if (i >= byteslen_adjusted) {
-			continue;
-		} else if (i >= byteslen) {
-			printf("   ");
-		} else {
-			printf("%02X ", bytes[i]);
-		}
-	}
-	printf("\n");
 }
