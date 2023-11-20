@@ -11,30 +11,15 @@
 /* Recommended max object size */
 #define MAX_OBJECT_SIZE 102400
 #define MAX_BUFFER_SIZE 5
-#define NUM_THREADS 8
 
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0";
 
 int complete_request_received(char *, ssize_t);
-void *thread_function(void *arg);
 int parse_request(char *, ssize_t, char *, char *, char *, char *);
 int open_sfd(int);
 void handle_client(int, int);
 void test_parser();
 void print_bytes(unsigned char *, int);
-
-// Define a struct to hold information for each thread if needed
-typedef struct {
-    int thread_id; // Example: Add more fields as required
-} ThreadInfo;
-
-// Declare shared variables like mutexes, condition variables, and buffer (queue)
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t cond_var = PTHREAD_COND_INITIALIZER;
-int buffer[MAX_BUFFER_SIZE];
-int buffer_count = 0;
-int buffer_in = 0;
-int buffer_out = 0;
 
 
 int main(int argc, char *argv[]) {
@@ -62,29 +47,6 @@ int main(int argc, char *argv[]) {
 
     close(server_fd);
     return 0;
-}
-
-_Noreturn void *thread_function(void *arg) {
-    ThreadInfo *thread_info = (ThreadInfo *)arg;
-    int tid = thread_info->thread_id;
-
-    while (1) {
-        pthread_mutex_lock(&mutex);
-        while (buffer_count == 0) {
-            pthread_cond_wait(&cond_var, &mutex);
-        }
-
-        int client_fd = buffer[buffer_out];
-        buffer_out = (buffer_out + 1) % MAX_BUFFER_SIZE;
-        buffer_count--;
-
-        pthread_mutex_unlock(&mutex);
-
-        // Handle the client request using handle_client function
-        handle_client(client_fd, tid); // Pass thread ID if needed
-
-        close(client_fd);
-    }
 }
 
 int complete_request_received(char *request, ssize_t received_bytes) {
