@@ -135,7 +135,7 @@ int parse_request(char *request, ssize_t received_bytes, char *method, char *hos
 }
 
 void handle_client(int client_fd) {
-    char buffer[MAX_BUFFER_SIZE]; // Adjust buffer size as needed
+    char buffer[1024]; // Adjust buffer size as needed
     ssize_t bytes_received;
     ssize_t total_received = 0;
     int request_complete = 0;
