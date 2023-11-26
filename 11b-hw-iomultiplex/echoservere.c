@@ -143,7 +143,9 @@ int main(int argc, char **argv)
 	struct epoll_event events[MAXEVENTS];
 	while (1) {
 		// wait for event to happen (-1 == no timeout)
+        printf("before epoll_wait()\n"); fflush(stdout);
 		int n = epoll_wait(efd, events, MAXEVENTS, -1);
+        printf("after epoll_wait()\n"); fflush(stdout);
 
 		for (int i = 0; i < n; i++) {
 			// grab the data structure from the event, and cast it
@@ -236,7 +238,7 @@ int main(int argc, char **argv)
 				// data left to be read.
 				while (1) {
 					char buf[MAXLINE];
-					int len = recv(active_client->fd, buf, MAXLINE, 0);
+					int len = recv(active_client->fd, buf, 1, 0);
 					if (len == 0) { // EOF received
 						// closing the fd will automatically
 						// unregister the fd from the efd
