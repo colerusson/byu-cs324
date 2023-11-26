@@ -46,6 +46,8 @@ int main(int argc, char* argv[])
     exit(EXIT_FAILURE);
   }
 
+  double start_time, end_time;
+
   /* The window in the plane. */
   const double xmin = atof(argv[1]);
   const double xmax = atof(argv[2]);
@@ -82,6 +84,7 @@ int main(int argc, char* argv[])
   int *saved = malloc(sizeof(int)*yres*xres);
 
   // Parallelize the outer loop using OpenMP
+  start_time = omp_get_wtime();
   #pragma omp parallel for private(x, y, u, v, k) // Private variables
   for (j = 0; j < yres; j++) {
     y = ymax - j * dy;
@@ -102,6 +105,9 @@ int main(int argc, char* argv[])
       saved[xres * j + i] = k;
     }
   }
+  end_time = omp_get_wtime();
+  double parallel_time = end_time - start_time;
+  printf("Parallel time: %f\n", parallel_time);
 
   for (j = 0; j < yres; j++) {
     for(i = 0; i < xres; i++) {
