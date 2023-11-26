@@ -35,6 +35,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stdint.h>
+#include <omp.h>
 
 int main(int argc, char* argv[])
 {
@@ -80,21 +81,24 @@ int main(int argc, char* argv[])
   int k; /* Iteration counter */
   int *saved = malloc(sizeof(int)*yres*xres);
 
+  // Parallelize the outer loop using OpenMP
+  #pragma omp parallel for private(x, y, u, v, k) // Private variables
   for (j = 0; j < yres; j++) {
     y = ymax - j * dy;
     for(i = 0; i < xres; i++) {
-      double u = 0.0;
-      double v= 0.0;
+      u = 0.0;
+      v= 0.0;
       double u2 = u * u;
       double v2 = v*v;
       x = xmin + i * dx;
+
       /* iterate the point */
       for (k = 1; k < maxiter && (u2 + v2 < 4.0); k++) {
             v = 2 * u * v + y;
             u = u2 - v2 + x;
             u2 = u * u;
             v2 = v * v;
-      };
+      }
       saved[xres * j + i] = k;
     }
   }
