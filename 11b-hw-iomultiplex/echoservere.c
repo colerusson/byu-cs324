@@ -207,10 +207,10 @@ int main(int argc, char **argv)
 							remote_addr_str, remote_port);
 
 					// set client file descriptor nonblocking
-					if (fcntl(connfd, F_SETFL, fcntl(connfd, F_GETFL, 0) | O_NONBLOCK) < 0) {
-						fprintf(stderr, "error setting socket option\n");
-						exit(1);
-					}
+//					if (fcntl(connfd, F_SETFL, fcntl(connfd, F_GETFL, 0) | O_NONBLOCK) < 0) {
+//						fprintf(stderr, "error setting socket option\n");
+//						exit(1);
+//					}
 
 					// allocate memory for a new struct
 					// client_info, and populate it with
@@ -236,7 +236,7 @@ int main(int argc, char **argv)
 				// read from socket until (1) the remote side
 				// has closed the connection or (2) there is no
 				// data left to be read.
-				while (1) {
+				//while (1) {
 					char buf[MAXLINE];
 					int len = recv(active_client->fd, buf, 1, 0);
 					if (len == 0) { // EOF received
@@ -260,8 +260,8 @@ int main(int argc, char **argv)
 						printf("Received %d bytes (total: %d)\n", len, active_client->total_length);
 						send(active_client->fd, buf, len, 0);
 					}
-                    break;
-				}
+                    //break;
+				//}
 			}
 		}
 	}
