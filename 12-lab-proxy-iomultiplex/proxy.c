@@ -19,6 +19,7 @@ int main(int argc, char *argv[])
 }
 
 int complete_request_received(char *request) {
+
 	return 0;
 }
 
