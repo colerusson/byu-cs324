@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
 }
 
 int complete_request_received(char *request) {
-
+    // TODO: Implement this function
 	return 0;
 }
 
