@@ -26,6 +26,7 @@ static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel M
 int parse_request(char *, char *, char *, char *, char *);
 int open_sfd(int);
 void handle_client(int, struct request_info *);
+void handle_new_clients(int, int, struct request_info *);
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -36,11 +37,16 @@ int main(int argc, char *argv[]) {
     int port = atoi(argv[1]);
     int server_fd = open_sfd(port);
 
+    struct request_info requests;
+    requests.client_count = 0;
+
     int epoll_fd = epoll_create1(0);
     if (epoll_fd == -1) {
         perror("Epoll creation failed");
         exit(EXIT_FAILURE);
     }
+
+    // Rest of the code for creating and binding server_fd
 
     struct epoll_event event, events[MAX_EVENTS];
     event.events = EPOLLIN;
@@ -49,9 +55,6 @@ int main(int argc, char *argv[]) {
         perror("Epoll control failed");
         exit(EXIT_FAILURE);
     }
-
-    struct request_info requests;
-    requests.client_count = 0;
 
     while (1) {
         int num_ready_fds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
@@ -62,25 +65,12 @@ int main(int argc, char *argv[]) {
 
         for (int i = 0; i < num_ready_fds; ++i) {
             if (events[i].data.fd == server_fd) {
-                struct sockaddr_in client_addr;
-                socklen_t client_len = sizeof(client_addr);
-                int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
-                if (client_fd == -1) {
-                    perror("Accept failed");
-                    continue;
-                }
-
-                requests.client_fds[requests.client_count++] = client_fd;
-
-                event.events = EPOLLIN | EPOLLET;
-                event.data.fd = client_fd;
-                if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
-                    perror("Epoll control for client_fd failed");
-                    exit(EXIT_FAILURE);
-                }
+                handle_new_clients(server_fd, epoll_fd, &requests);
             } else {
-                handle_client(events[i].data.fd, &requests);
-                close(events[i].data.fd);
+                int client_fd = events[i].data.fd;
+                handle_client(client_fd, &requests);
+                close(client_fd);
+                epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, NULL);
             }
         }
     }
@@ -204,6 +194,29 @@ void handle_client(int client_fd, struct request_info *requests) {
 
     close(client_fd);
 }
+
+void handle_new_clients(int server_fd, int epoll_fd, struct request_info *requests) {
+    struct epoll_event event;
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+    if (client_fd == -1) {
+        perror("Accept failed");
+        return;
+    }
+
+    event.events = EPOLLIN | EPOLLET;
+    event.data.fd = client_fd;
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
+        perror("Epoll control for client_fd failed");
+        close(client_fd);
+        return;
+    }
+
+    // Your existing logic to handle the client request
+    handle_client(client_fd, requests);
+}
+
 
 int parse_request(char *request, char *method, char *hostname, char *port, char *path) {
     // Extract method

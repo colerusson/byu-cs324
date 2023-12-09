@@ -14,19 +14,30 @@
 #define MAX_BUFFER_SIZE 1024
 #define BUFFER_SIZE 5
 
+// Structure to hold information for managing a single request
 struct request_info {
-    int client_fds[MAX_CLIENTS];  // Array to store multiple client file descriptors
-    int server_fds[MAX_CLIENTS];  // Array to store multiple server file descriptors
-    int client_count;
-    // Add other necessary information to manage multiple requests
+    int client_fd;
+    int server_fd;
+    int state;
+    char buffer[MAX_BUFFER_SIZE];
+    int bytes_received_from_client;
+    int bytes_to_send_to_server;
+    int bytes_sent_to_server;
+    int bytes_received_from_server;
+    int bytes_sent_to_client;
 };
+
+#define READ_REQUEST 1
+#define SEND_REQUEST 2
+#define READ_RESPONSE 3
+#define SEND_RESPONSE 4
 
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0";
 
 int parse_request(char *, char *, char *, char *, char *);
 int open_sfd(int);
-void handle_client(int, struct request_info *);
-void handle_new_clients(int, int, struct request_info *);
+void handle_client(struct request_info *);
+void handle_new_clients(int, int);
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -35,18 +46,33 @@ int main(int argc, char *argv[]) {
     }
 
     int port = atoi(argv[1]);
-    int server_fd = open_sfd(port);
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd == -1) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
+    }
 
-    struct request_info requests;
-    requests.client_count = 0;
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+        perror("Bind failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(server_fd, SOMAXCONN) == -1) {
+        perror("Listen failed");
+        exit(EXIT_FAILURE);
+    }
 
     int epoll_fd = epoll_create1(0);
     if (epoll_fd == -1) {
         perror("Epoll creation failed");
         exit(EXIT_FAILURE);
     }
-
-    // Rest of the code for creating and binding server_fd
 
     struct epoll_event event, events[MAX_EVENTS];
     event.events = EPOLLIN;
@@ -65,137 +91,131 @@ int main(int argc, char *argv[]) {
 
         for (int i = 0; i < num_ready_fds; ++i) {
             if (events[i].data.fd == server_fd) {
-                handle_new_clients(server_fd, epoll_fd, &requests);
+                handle_new_clients(server_fd, epoll_fd);
             } else {
-                int client_fd = events[i].data.fd;
-                handle_client(client_fd, &requests);
-                close(client_fd);
-                epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, NULL);
+                struct request_info *request = events[i].data.ptr;
+                handle_client(request);
+                free(request); // Free the allocated request_info struct
+                epoll_ctl(epoll_fd, EPOLL_CTL_DEL, request->client_fd, NULL);
             }
         }
     }
 
-    // Cleanup code
+    // Cleanup code (not reached in this simplified example)
     close(server_fd);
     return 0;
 }
 
-void handle_client(int client_fd, struct request_info *requests) {
-    char buffer[MAX_BUFFER_SIZE]; // Adjust buffer size as needed
-    char method[16], hostname[64], port[8], path[64];
-    char wholeRequest[500];
-    int startPoint = 0;
+void handle_client(struct request_info *request) {
     ssize_t bytes_received;
+    char modified_request[MAX_BUFFER_SIZE];
 
-    while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
-        if (bytes_received == -1) {
-            perror("Receive failed");
-            return;
-        }
-
-        char *end_of_headers = strstr(buffer, "\r\n\r\n");
-        memcpy(wholeRequest + startPoint, buffer, bytes_received);
-        startPoint += bytes_received;
-        if (end_of_headers != NULL) {
-            printf("Printing end of headers: %s\n", end_of_headers);
-            break; // Request is complete
-        }
-    }
-
-    // Null terminate the request string
-    wholeRequest[startPoint] = '\0';
-
-    if (parse_request(wholeRequest, method, hostname, port, path)) {
-        printf("Method: %s, Hostname: %s, Port: %s, Path: %s\n", method, hostname, port, path);
-
-        // Create the modified HTTP request to send to the server
-        char modified_request[1024]; // Adjust size as needed
-        sprintf(modified_request, "GET %s HTTP/1.0\r\nHost: %s:%s\r\nUser-Agent: %s\r\nConnection: close\r\nProxy-Connection: close\r\n\r\n",
-                path, hostname, port, user_agent_hdr);
-
-        // Create a socket to communicate with the server and forward the request
-        int server_fd = socket(AF_INET, SOCK_STREAM, 0);
-        if (server_fd < 0) {
-            perror("Socket creation error");
-            return;
-        }
-
-        struct sockaddr_in server_addr;
-        memset(&server_addr, 0, sizeof(server_addr));
-        server_addr.sin_family = AF_INET;
-        server_addr.sin_port = htons(atoi(port)); // Convert port to network byte order
-
-        struct addrinfo hints, *server_info;
-        memset(&hints, 0, sizeof hints);
-        hints.ai_family = AF_INET; // Use IPv4
-        hints.ai_socktype = SOCK_STREAM;
-
-        int status;
-        if ((status = getaddrinfo(hostname, port, &hints, &server_info)) != 0) {
-            fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
-            close(server_fd);
-            return;
-        }
-
-        struct addrinfo *p;
-        for (p = server_info; p != NULL; p = p->ai_next) {
-            if (connect(server_fd, p->ai_addr, p->ai_addrlen) == -1) {
-                perror("connect");
-                close(server_fd);
-                continue;
+    switch (request->state) {
+        case READ_REQUEST:
+            while ((bytes_received = recv(request->client_fd, request->buffer + request->bytes_received_from_client, sizeof(request->buffer) - request->bytes_received_from_client, 0)) > 0) {
+                request->bytes_received_from_client += bytes_received;
+                // Check for end of headers to determine complete request
+                char *end_of_headers = strstr(request->buffer, "\r\n\r\n");
+                if (end_of_headers != NULL) {
+                    // Parse the request here and set up modified_request
+                    // Update request->state accordingly (e.g., request->state = SEND_REQUEST;)
+                    request->state = SEND_REQUEST;
+                    break;
+                }
             }
-            break;
-        }
-
-        if (p == NULL) {
-            fprintf(stderr, "Failed to connect\n");
-            freeaddrinfo(server_info);
-            close(server_fd);
-            return;
-        }
-
-        ssize_t bytes_sent = send(server_fd, modified_request, strlen(modified_request), 0);
-        if (bytes_sent < 0) {
-            perror("Send error");
-            close(server_fd);
-            return;
-        }
-
-        char server_response[1024]; // Adjust size as needed
-        ssize_t server_bytes_received;
-        while ((server_bytes_received = recv(server_fd, server_response, sizeof(server_response), 0)) > 0) {
-            ssize_t response_sent = send(client_fd, server_response, server_bytes_received, 0);
-            if (response_sent < 0) {
-                perror("Response send error");
-                close(server_fd);
-                close(client_fd);
+            if (bytes_received == -1) {
+                perror("Receive failed");
+                // Handle error
+                close(request->client_fd);
+                free(request);
                 return;
             }
+            break;
 
-            memset(server_response, 0, sizeof(server_response));
-        }
+        case SEND_REQUEST:
+            // Create modified request and send to server
+            // Update request->state accordingly (e.g., request->state = READ_RESPONSE;)
+            sprintf(modified_request, "GET / HTTP/1.1\r\nHost: www.example.com\r\n\r\n");
 
-        if (server_bytes_received < 0) {
-            perror("Server receive error");
-        }
+            ssize_t bytes_sent = send(request->server_fd, modified_request, strlen(modified_request), 0);
+            if (bytes_sent == -1) {
+                perror("Send error");
+                // Handle error
+                close(request->client_fd);
+                close(request->server_fd);
+                free(request);
+                return;
+            }
+            request->bytes_sent_to_server += bytes_sent;
+            request->state = READ_RESPONSE;
+            break;
 
-        close(server_fd);
-        close(client_fd);
-        return;
-    } else {
-        printf("Failed to parse HTTP request\n");
-        close(client_fd);
-        return;
+        case READ_RESPONSE:
+            // Receive response from server and forward to client
+            bytes_received = recv(request->server_fd, request->buffer + request->bytes_received_from_server, sizeof(request->buffer) - request->bytes_received_from_server, 0);
+            if (bytes_received > 0) {
+                ssize_t response_sent = send(request->client_fd, request->buffer + request->bytes_received_from_server, bytes_received, 0);
+                if (response_sent == -1) {
+                    perror("Response send error");
+                    // Handle error
+                    close(request->client_fd);
+                    close(request->server_fd);
+                    free(request);
+                    return;
+                }
+                request->bytes_received_from_server += bytes_received;
+                request->bytes_sent_to_client += response_sent;
+            } else if (bytes_received == 0) {
+                // Server has closed the connection
+                close(request->server_fd);
+                request->server_fd = -1;
+                request->state = SEND_RESPONSE;
+            } else {
+                perror("Server receive error");
+                // Handle error
+                close(request->client_fd);
+                close(request->server_fd);
+                free(request);
+                return;
+            }
+            break;
+
+        case SEND_RESPONSE:
+            // Send server response to client
+            while (request->bytes_sent_to_client < request->bytes_received_from_server) {
+                ssize_t remaining_data = request->bytes_received_from_server - request->bytes_sent_to_client;
+                ssize_t response_sent = send(request->client_fd, request->buffer + request->bytes_sent_to_client, remaining_data, 0);
+                if (response_sent == -1) {
+                    perror("Response send error");
+                    // Handle error
+                    close(request->client_fd);
+                    close(request->server_fd);
+                    free(request);
+                    return;
+                }
+                request->bytes_sent_to_client += response_sent;
+            }
+
+            // Reset request state and clean up resources
+            close(request->client_fd);
+            if (request->server_fd != -1)
+                close(request->server_fd);
+            free(request); // Free the allocated request_info struct
+            return;
+
+
+        default:
+            // Invalid state or completed request
+            close(request->client_fd);
+            if (request->server_fd != -1)
+                close(request->server_fd);
+            free(request); // Free the allocated request_info struct
+            return;
     }
-
-    if (bytes_received < 0) {
-        perror("Client receive error");
-    }
-
-    close(client_fd);
 }
 
-void handle_new_clients(int server_fd, int epoll_fd, struct request_info *requests) {
+
+void handle_new_clients(int server_fd, int epoll_fd) {
     struct epoll_event event;
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
@@ -206,15 +226,25 @@ void handle_new_clients(int server_fd, int epoll_fd, struct request_info *reques
     }
 
     event.events = EPOLLIN | EPOLLET;
-    event.data.fd = client_fd;
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
-        perror("Epoll control for client_fd failed");
+    event.data.ptr = malloc(sizeof(struct request_info));
+    if (event.data.ptr == NULL) {
+        perror("Memory allocation failed");
         close(client_fd);
         return;
     }
 
-    // Your existing logic to handle the client request
-    handle_client(client_fd, requests);
+    struct request_info *new_request = event.data.ptr;
+    new_request->client_fd = client_fd;
+    new_request->server_fd = -1; // Initialize other fields as needed
+    new_request->state = 1; // Set the initial state
+    // Initialize other fields in the request_info struct
+
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
+        perror("Epoll control for client_fd failed");
+        close(client_fd);
+        free(new_request);
+        return;
+    }
 }
 
 
