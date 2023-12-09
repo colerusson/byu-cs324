@@ -26,6 +26,7 @@ static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel M
 int parse_request(char *, char *, char *, char *, char *);
 int open_sfd(int);
 void handle_client(int, struct request_info *);
+void handle_new_clients(int, int, struct request_info *);
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -64,25 +65,8 @@ int main(int argc, char *argv[]) {
 
         for (int i = 0; i < num_ready_fds; ++i) {
             if (events[i].data.fd == server_fd) {
-                struct sockaddr_in client_addr;
-                socklen_t client_len = sizeof(client_addr);
-                int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
-                if (client_fd == -1) {
-                    perror("Accept failed");
-                    continue;
-                }
-
-                event.events = EPOLLIN | EPOLLET;
-                event.data.fd = client_fd;
-                if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
-                    perror("Epoll control for client_fd failed");
-                    exit(EXIT_FAILURE);
-                }
-
-                // Your existing logic to handle the client request
-                handle_client(client_fd, &requests);
+                handle_new_clients(server_fd, epoll_fd, &requests);
             } else {
-                // Handling events for existing client connections
                 int client_fd = events[i].data.fd;
                 handle_client(client_fd, &requests);
                 close(client_fd);
@@ -210,6 +194,29 @@ void handle_client(int client_fd, struct request_info *requests) {
 
     close(client_fd);
 }
+
+void handle_new_clients(int server_fd, int epoll_fd, struct request_info *requests) {
+    struct epoll_event event;
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+    int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+    if (client_fd == -1) {
+        perror("Accept failed");
+        return;
+    }
+
+    event.events = EPOLLIN | EPOLLET;
+    event.data.fd = client_fd;
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
+        perror("Epoll control for client_fd failed");
+        close(client_fd);
+        return;
+    }
+
+    // Your existing logic to handle the client request
+    handle_client(client_fd, requests);
+}
+
 
 int parse_request(char *request, char *method, char *hostname, char *port, char *path) {
     // Extract method
