@@ -7,10 +7,26 @@
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <sys/epoll.h>
+#include <fcntl.h>
 
 #define MAX_EVENTS 10
 #define MAX_BUFFER_SIZE 1024
 #define BUFFER_SIZE 5
+
+struct request_info {
+    int client_fd;
+    int server_fd;
+    int state;
+    char buffer[MAX_BUFFER_SIZE];
+    ssize_t total_bytes_client_read;
+    ssize_t total_bytes_server_write;
+    // Add other necessary members according to your requirements
+};
+
+#define READ_REQUEST 1
+#define SEND_REQUEST 2
+#define READ_RESPONSE 3
+#define SEND_RESPONSE 4
 
 // Define a structure to hold socket descriptors in the buffer
 typedef struct {
@@ -25,6 +41,7 @@ static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel M
 int parse_request(char *, char *, char *, char *, char *);
 int open_sfd(int);
 void handle_client(int);
+void handle_new_clients(int, int);
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -41,16 +58,20 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    struct epoll_event event, events[MAX_EVENTS];
-    event.events = EPOLLIN;
+    // Register server_fd with epoll for reading (accepting new clients)
+    struct epoll_event event;
+    event.events = EPOLLIN | EPOLLET; // Edge-triggered monitoring
     event.data.fd = server_fd;
+
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event) == -1) {
-        perror("Epoll control failed");
+        perror("Epoll control for server_fd failed");
         exit(EXIT_FAILURE);
     }
 
     while (1) {
+        struct epoll_event events[MAX_EVENTS];
         int num_ready_fds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+
         if (num_ready_fds == -1) {
             perror("Epoll wait failed");
             exit(EXIT_FAILURE);
@@ -58,28 +79,16 @@ int main(int argc, char *argv[]) {
 
         for (int i = 0; i < num_ready_fds; ++i) {
             if (events[i].data.fd == server_fd) {
-                struct sockaddr_in client_addr;
-                socklen_t client_len = sizeof(client_addr);
-                int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
-                if (client_fd == -1) {
-                    perror("Accept failed");
-                    continue;
-                }
-
-                event.events = EPOLLIN | EPOLLET;
-                event.data.fd = client_fd;
-                if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
-                    perror("Epoll control for client_fd failed");
-                    exit(EXIT_FAILURE);
-                }
+                handle_new_clients(epoll_fd, server_fd);
             } else {
+                // Handle events for existing clients (reading, writing, etc.)
+                // Implement this part to manage existing client requests
                 handle_client(events[i].data.fd);
-                close(events[i].data.fd);
             }
         }
     }
 
-    // Cleanup code
+    // Clean up resources (free memory, close sockets, etc.)
     close(server_fd);
     return 0;
 }
@@ -207,6 +216,47 @@ void handle_client(int client_fd) {
 
     // Close the client socket
     close(client_fd);
+}
+
+void handle_new_clients(int epoll_fd, int server_fd) {
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
+
+    int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+    if (client_fd == -1) {
+        perror("Accept failed");
+        return;
+    }
+
+    // Set client socket to non-blocking
+    int flags = fcntl(client_fd, F_GETFL, 0);
+    fcntl(client_fd, F_SETFL, flags | O_NONBLOCK);
+
+    // Initialize request_info for this client request
+    struct request_info *new_request = (struct request_info *)malloc(sizeof(struct request_info));
+    if (new_request == NULL) {
+        perror("Memory allocation failed");
+        close(client_fd);
+        return;
+    }
+
+    memset(new_request, 0, sizeof(struct request_info));
+    new_request->client_fd = client_fd;
+    new_request->state = READ_REQUEST;
+
+    // Register client_fd with epoll for reading
+    struct epoll_event event;
+    event.events = EPOLLIN | EPOLLET; // Edge-triggered monitoring
+    event.data.ptr = new_request;
+
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
+        perror("Epoll control for client_fd failed");
+        free(new_request);
+        close(client_fd);
+        return;
+    }
+
+    printf("New client connected, client_fd: %d\n", client_fd);
 }
 
 int parse_request(char *request, char *method, char *hostname, char *port, char *path) {
