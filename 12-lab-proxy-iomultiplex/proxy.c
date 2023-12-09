@@ -36,11 +36,16 @@ int main(int argc, char *argv[]) {
     int port = atoi(argv[1]);
     int server_fd = open_sfd(port);
 
+    struct request_info requests;
+    requests.client_count = 0;
+
     int epoll_fd = epoll_create1(0);
     if (epoll_fd == -1) {
         perror("Epoll creation failed");
         exit(EXIT_FAILURE);
     }
+
+    // Rest of the code for creating and binding server_fd
 
     struct epoll_event event, events[MAX_EVENTS];
     event.events = EPOLLIN;
@@ -49,9 +54,6 @@ int main(int argc, char *argv[]) {
         perror("Epoll control failed");
         exit(EXIT_FAILURE);
     }
-
-    struct request_info requests;
-    requests.client_count = 0;
 
     while (1) {
         int num_ready_fds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
@@ -70,17 +72,21 @@ int main(int argc, char *argv[]) {
                     continue;
                 }
 
-                requests.client_fds[requests.client_count++] = client_fd;
-
                 event.events = EPOLLIN | EPOLLET;
                 event.data.fd = client_fd;
                 if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
                     perror("Epoll control for client_fd failed");
                     exit(EXIT_FAILURE);
                 }
+
+                // Your existing logic to handle the client request
+                handle_client(client_fd, &requests);
             } else {
-                handle_client(events[i].data.fd, &requests);
-                close(events[i].data.fd);
+                // Handling events for existing client connections
+                int client_fd = events[i].data.fd;
+                handle_client(client_fd, &requests);
+                close(client_fd);
+                epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, NULL);
             }
         }
     }

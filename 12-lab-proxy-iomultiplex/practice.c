@@ -25,7 +25,7 @@ static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel M
 
 int parse_request(char *, char *, char *, char *, char *);
 int open_sfd(int);
-void handle_client(int);
+void handle_client(int, struct request_info *);
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -50,6 +50,9 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    struct request_info requests;
+    requests.client_count = 0;
+
     while (1) {
         int num_ready_fds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
         if (num_ready_fds == -1) {
@@ -67,6 +70,8 @@ int main(int argc, char *argv[]) {
                     continue;
                 }
 
+                requests.client_fds[requests.client_count++] = client_fd;
+
                 event.events = EPOLLIN | EPOLLET;
                 event.data.fd = client_fd;
                 if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
@@ -74,7 +79,7 @@ int main(int argc, char *argv[]) {
                     exit(EXIT_FAILURE);
                 }
             } else {
-                handle_client(events[i].data.fd);
+                handle_client(events[i].data.fd, &requests);
                 close(events[i].data.fd);
             }
         }
@@ -85,14 +90,14 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-void handle_client(int client_fd) {
+void handle_client(int client_fd, struct request_info *requests) {
     char buffer[MAX_BUFFER_SIZE]; // Adjust buffer size as needed
     char method[16], hostname[64], port[8], path[64];
     char wholeRequest[500];
     int startPoint = 0;
     ssize_t bytes_received;
 
-    while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0 )) > 0) {
+    while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
         if (bytes_received == -1) {
             perror("Receive failed");
             return;
@@ -125,13 +130,11 @@ void handle_client(int client_fd) {
             return;
         }
 
-        // Set up the server address and port to connect to using getaddrinfo
         struct sockaddr_in server_addr;
         memset(&server_addr, 0, sizeof(server_addr));
         server_addr.sin_family = AF_INET;
         server_addr.sin_port = htons(atoi(port)); // Convert port to network byte order
 
-        // Resolve the hostname to an IP address using getaddrinfo
         struct addrinfo hints, *server_info;
         memset(&hints, 0, sizeof hints);
         hints.ai_family = AF_INET; // Use IPv4
@@ -144,7 +147,6 @@ void handle_client(int client_fd) {
             return;
         }
 
-        // Loop through the addresses returned by getaddrinfo until a successful connection is made
         struct addrinfo *p;
         for (p = server_info; p != NULL; p = p->ai_next) {
             if (connect(server_fd, p->ai_addr, p->ai_addrlen) == -1) {
@@ -162,7 +164,6 @@ void handle_client(int client_fd) {
             return;
         }
 
-        // Send the modified request to the server
         ssize_t bytes_sent = send(server_fd, modified_request, strlen(modified_request), 0);
         if (bytes_sent < 0) {
             perror("Send error");
@@ -170,7 +171,6 @@ void handle_client(int client_fd) {
             return;
         }
 
-        // Receive and forward the server's response to the client
         char server_response[1024]; // Adjust size as needed
         ssize_t server_bytes_received;
         while ((server_bytes_received = recv(server_fd, server_response, sizeof(server_response), 0)) > 0) {
@@ -189,15 +189,11 @@ void handle_client(int client_fd) {
             perror("Server receive error");
         }
 
-        // Close the connection to the server
         close(server_fd);
-
-        // Close the client socket
         close(client_fd);
         return;
     } else {
         printf("Failed to parse HTTP request\n");
-        // Close the client socket (moved to the end)
         close(client_fd);
         return;
     }
@@ -206,7 +202,6 @@ void handle_client(int client_fd) {
         perror("Client receive error");
     }
 
-    // Close the client socket
     close(client_fd);
 }
 
