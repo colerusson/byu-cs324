@@ -5,33 +5,25 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <netdb.h>
-#include <arpa/inet.h>
-#include <pthread.h>
-#include <semaphore.h>
+#include <sys/select.h>
 
 /* Recommended max object size */
 #define MAX_BUFFER_SIZE 1024
-#define BUFFER_SIZE 5
-#define NUM_THREADS 8
-
-sem_t empty_slots, full_slots;
-pthread_mutex_t buffer_lock;
+#define MAX_CLIENTS 100
 
 // Define a structure to hold socket descriptors in the buffer
 typedef struct {
     int client_fd;
 } BufferItem;
 
-BufferItem buffer[BUFFER_SIZE];
+BufferItem buffer[MAX_BUFFER_SIZE];
 int in = 0, out = 0;
 
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0";
 
-_Noreturn void *thread_function(void *);
 int parse_request(char *, char *, char *, char *, char *);
 int open_sfd(int);
 void handle_client(int);
-void test_parser();
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -40,62 +32,86 @@ int main(int argc, char *argv[]) {
     }
 
     int port = atoi(argv[1]);
-    int server_fd = open_sfd(port);
-
-    // Initialize semaphores and mutex
-    sem_init(&empty_slots, 0, BUFFER_SIZE);
-    sem_init(&full_slots, 0, 0);
-    pthread_mutex_init(&buffer_lock, NULL);
-
-    // Create consumer threads
-    pthread_t threads[NUM_THREADS];
-    for (int i = 0; i < NUM_THREADS; ++i) {
-        pthread_create(&threads[i], NULL, thread_function, NULL);
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd == -1) {
+        perror("Socket creation failed");
+        exit(EXIT_FAILURE);
     }
 
-    while (1) {
-        struct sockaddr_in client_addr;
-        socklen_t client_len = sizeof(client_addr);
+    int optval = 1;
+    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEPORT, &optval, sizeof(optval)) == -1) {
+        perror("Setsockopt failed");
+        exit(EXIT_FAILURE);
+    }
 
-        int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
-        if (client_fd == -1) {
-            perror("Accept failed");
-            continue;
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+    if (bind(server_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
+        perror("Bind failed");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(server_fd, MAX_CLIENTS) == -1) {
+        perror("Listen failed");
+        exit(EXIT_FAILURE);
+    }
+
+    fd_set read_fds;
+    int max_fd = server_fd;
+    int client_fds[MAX_CLIENTS] = {0};
+
+    while (1) {
+        FD_ZERO(&read_fds);
+        FD_SET(server_fd, &read_fds);
+
+        for (int i = 0; i < MAX_CLIENTS; ++i) {
+            if (client_fds[i] > 0) {
+                FD_SET(client_fds[i], &read_fds);
+                if (client_fds[i] > max_fd) {
+                    max_fd = client_fds[i];
+                }
+            }
         }
 
-        sem_wait(&empty_slots);
-        pthread_mutex_lock(&buffer_lock);
+        int activity = select(max_fd + 1, &read_fds, NULL, NULL, NULL);
+        if (activity < 0) {
+            perror("Select error");
+            exit(EXIT_FAILURE);
+        }
 
-        // Produce item - Add client_fd to buffer (queue)
-        buffer[in].client_fd = client_fd;
-        in = (in + 1) % BUFFER_SIZE;
+        if (FD_ISSET(server_fd, &read_fds)) {
+            struct sockaddr_in client_addr;
+            socklen_t client_len = sizeof(client_addr);
 
-        pthread_mutex_unlock(&buffer_lock);
-        sem_post(&full_slots);
+            int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+            if (client_fd == -1) {
+                perror("Accept failed");
+                continue;
+            }
+
+            for (int i = 0; i < MAX_CLIENTS; ++i) {
+                if (client_fds[i] == 0) {
+                    client_fds[i] = client_fd;
+                    break;
+                }
+            }
+        }
+
+        for (int i = 0; i < MAX_CLIENTS; ++i) {
+            if (client_fds[i] > 0 && FD_ISSET(client_fds[i], &read_fds)) {
+                handle_client(client_fds[i]);
+                close(client_fds[i]);
+                client_fds[i] = 0;
+            }
+        }
     }
 
-    // Cleanup code
     close(server_fd);
     return 0;
-}
-
-// Function executed by each thread
-_Noreturn void *thread_function(void *arg) {
-    while (1) {
-        sem_wait(&full_slots);
-        pthread_mutex_lock(&buffer_lock);
-
-        // Consume item from buffer (queue)
-        int client_fd = buffer[out].client_fd;
-        out = (out + 1) % BUFFER_SIZE;
-
-        pthread_mutex_unlock(&buffer_lock);
-        sem_post(&empty_slots);
-
-        // Handle the client request using client_fd
-        handle_client(client_fd);
-        close(client_fd);
-    }
 }
 
 int parse_request(char *request, char *method, char *hostname, char *port, char *path) {
@@ -160,13 +176,13 @@ int parse_request(char *request, char *method, char *hostname, char *port, char 
 }
 
 void handle_client(int client_fd) {
-    char buffer[MAX_BUFFER_SIZE]; // Adjust buffer size as needed
+    char buffer[MAX_BUFFER_SIZE];
     char method[16], hostname[64], port[8], path[64];
     char wholeRequest[500];
     int startPoint = 0;
     ssize_t bytes_received;
 
-    while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0 )) > 0) {
+    while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
         if (bytes_received == -1) {
             perror("Receive failed");
             return;
@@ -181,62 +197,41 @@ void handle_client(int client_fd) {
         }
     }
 
-    // Null terminate the request string
     wholeRequest[startPoint] = '\0';
 
     if (parse_request(wholeRequest, method, hostname, port, path)) {
         printf("Method: %s, Hostname: %s, Port: %s, Path: %s\n", method, hostname, port, path);
 
-        // Create the modified HTTP request to send to the server
-        char modified_request[1024]; // Adjust size as needed
+        char modified_request[1024];
         sprintf(modified_request, "GET %s HTTP/1.0\r\nHost: %s:%s\r\nUser-Agent: %s\r\nConnection: close\r\nProxy-Connection: close\r\n\r\n",
                 path, hostname, port, user_agent_hdr);
 
-        // Create a socket to communicate with the server and forward the request
         int server_fd = socket(AF_INET, SOCK_STREAM, 0);
         if (server_fd < 0) {
             perror("Socket creation error");
             return;
         }
 
-        // Set up the server address and port to connect to using getaddrinfo
         struct sockaddr_in server_addr;
         memset(&server_addr, 0, sizeof(server_addr));
         server_addr.sin_family = AF_INET;
-        server_addr.sin_port = htons(atoi(port)); // Convert port to network byte order
+        server_addr.sin_port = htons(atoi(port));
 
-        // Resolve the hostname to an IP address using getaddrinfo
-        struct addrinfo hints, *server_info;
-        memset(&hints, 0, sizeof hints);
-        hints.ai_family = AF_INET; // Use IPv4
-        hints.ai_socktype = SOCK_STREAM;
-
-        int status;
-        if ((status = getaddrinfo(hostname, port, &hints, &server_info)) != 0) {
-            fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+        struct hostent *server = gethostbyname(hostname);
+        if (server == NULL) {
+            fprintf(stderr, "Failed to resolve hostname\n");
             close(server_fd);
             return;
         }
 
-        // Loop through the addresses returned by getaddrinfo until a successful connection is made
-        struct addrinfo *p;
-        for (p = server_info; p != NULL; p = p->ai_next) {
-            if (connect(server_fd, p->ai_addr, p->ai_addrlen) == -1) {
-                perror("connect");
-                close(server_fd);
-                continue;
-            }
-            break;
-        }
+        memcpy(&server_addr.sin_addr.s_addr, server->h_addr, server->h_length);
 
-        if (p == NULL) {
-            fprintf(stderr, "Failed to connect\n");
-            freeaddrinfo(server_info);
+        if (connect(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+            perror("Connect failed");
             close(server_fd);
             return;
         }
 
-        // Send the modified request to the server
         ssize_t bytes_sent = send(server_fd, modified_request, strlen(modified_request), 0);
         if (bytes_sent < 0) {
             perror("Send error");
@@ -244,8 +239,7 @@ void handle_client(int client_fd) {
             return;
         }
 
-        // Receive and forward the server's response to the client
-        char server_response[1024]; // Adjust size as needed
+        char server_response[1024];
         ssize_t server_bytes_received;
         while ((server_bytes_received = recv(server_fd, server_response, sizeof(server_response), 0)) > 0) {
             ssize_t response_sent = send(client_fd, server_response, server_bytes_received, 0);
@@ -263,15 +257,11 @@ void handle_client(int client_fd) {
             perror("Server receive error");
         }
 
-        // Close the connection to the server
         close(server_fd);
-
-        // Close the client socket
         close(client_fd);
         return;
     } else {
         printf("Failed to parse HTTP request\n");
-        // Close the client socket (moved to the end)
         close(client_fd);
         return;
     }
@@ -280,7 +270,6 @@ void handle_client(int client_fd) {
         perror("Client receive error");
     }
 
-    // Close the client socket
     close(client_fd);
 }
 
