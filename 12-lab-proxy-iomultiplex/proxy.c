@@ -14,9 +14,19 @@
 #define MAX_BUFFER_SIZE 1024
 #define BUFFER_SIZE 5
 
+enum RequestState {
+    READ_REQUEST,
+    SEND_REQUEST,
+    READ_RESPONSE,
+    SEND_RESPONSE,
+};
+
 struct request_info {
     int client_fds[MAX_CLIENTS];
     int server_fds[MAX_CLIENTS];
+    enum RequestState state[MAX_CLIENTS];
+    char client_request_buffer[MAX_CLIENTS][MAX_BUFFER_SIZE];
+    char server_response_buffer[MAX_CLIENTS][MAX_BUFFER_SIZE];
     int client_count;
     // Add other necessary information to manage multiple requests
 };
@@ -25,8 +35,8 @@ static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel M
 
 int parse_request(char *, char *, char *, char *, char *);
 int open_sfd(int);
-void handle_client(int, struct request_info *);
-void handle_new_clients(int, int, struct request_info *);
+void handle_client(int client_fd, struct request_info *requests, int index);
+void handle_new_clients(int server_fd, int epoll_fd, struct request_info *requests, int);
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -38,7 +48,7 @@ int main(int argc, char *argv[]) {
     int server_fd = open_sfd(port);
 
     struct request_info requests;
-    requests.client_count = 0;
+    memset(&requests, 0, sizeof(requests));
 
     int epoll_fd = epoll_create1(0);
     if (epoll_fd == -1) {
@@ -65,12 +75,21 @@ int main(int argc, char *argv[]) {
 
         for (int i = 0; i < num_ready_fds; ++i) {
             if (events[i].data.fd == server_fd) {
-                handle_new_clients(server_fd, epoll_fd, &requests);
+                handle_new_clients(server_fd, epoll_fd, &requests, i);
             } else {
                 int client_fd = events[i].data.fd;
-                handle_client(client_fd, &requests);
-                close(client_fd);
-                epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, NULL);
+                int index = -1;
+                for (int j = 0; j < requests.client_count; ++j) {
+                    if (requests.client_fds[j] == client_fd) {
+                        index = j;
+                        break;
+                    }
+                }
+                if (index != -1) {
+                    handle_client(client_fd, &requests, index);
+                    close(client_fd);
+                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, client_fd, NULL);
+                }
             }
         }
     }
@@ -80,12 +99,14 @@ int main(int argc, char *argv[]) {
     return 0;
 }
 
-void handle_client(int client_fd, struct request_info *requests) {
+void handle_client(int client_fd, struct request_info *requests, int index) {
     char buffer[MAX_BUFFER_SIZE]; // Adjust buffer size as needed
     char method[16], hostname[64], port[8], path[64];
     char wholeRequest[500];
     int startPoint = 0;
     ssize_t bytes_received;
+
+    // Existing code for receiving the request...
 
     while ((bytes_received = recv(client_fd, buffer, sizeof(buffer), 0)) > 0) {
         if (bytes_received == -1) {
@@ -195,7 +216,7 @@ void handle_client(int client_fd, struct request_info *requests) {
     close(client_fd);
 }
 
-void handle_new_clients(int server_fd, int epoll_fd, struct request_info *requests) {
+void handle_new_clients(int server_fd, int epoll_fd, struct request_info *requests, int index) {
     struct epoll_event event;
     struct sockaddr_in client_addr;
     socklen_t client_len = sizeof(client_addr);
@@ -214,8 +235,9 @@ void handle_new_clients(int server_fd, int epoll_fd, struct request_info *reques
     }
 
     // Your existing logic to handle the client request
-    handle_client(client_fd, requests);
+    handle_client(client_fd, requests, index); // Pass the 'index' parameter
 }
+
 
 
 int parse_request(char *request, char *method, char *hostname, char *port, char *path) {
