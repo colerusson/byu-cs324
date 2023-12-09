@@ -5,30 +5,26 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <netdb.h>
+#include <arpa/inet.h>
 #include <sys/epoll.h>
 
-/* Recommended max object size */
+#define MAX_EVENTS 10
 #define MAX_BUFFER_SIZE 1024
-#define MAX_CLIENTS 100
-#define MAX_EVENTS 100
-#define READ_REQUEST 0
-#define SEND_REQUEST 1
+#define BUFFER_SIZE 5
 
+// Define a structure to hold socket descriptors in the buffer
+typedef struct {
+    int client_fd;
+} BufferItem;
 
-struct request_info {
-    int client_fd;           // client-to-proxy socket
-    int server_fd;           // proxy-to-server socket
-    int state;               // current state of the request (READ_REQUEST, SEND_REQUEST, etc.)
-    char buffer[MAX_BUFFER_SIZE];  // buffer to read into and write from
-    // other members to track bytes read/written, method, hostname, port, path, etc.
-};
+BufferItem buffer[BUFFER_SIZE];
+int in = 0, out = 0;
 
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0";
 
 int parse_request(char *, char *, char *, char *, char *);
 int open_sfd(int);
 void handle_client(int);
-void handle_new_clients(int, int, struct epoll_event *, struct request_info *);
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
@@ -45,51 +41,49 @@ int main(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    struct epoll_event event;
+    struct epoll_event event, events[MAX_EVENTS];
     event.events = EPOLLIN;
     event.data.fd = server_fd;
-
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event) == -1) {
-        perror("Epoll add error");
-        exit(EXIT_FAILURE);
-    }
-
-    struct epoll_event *events = malloc(MAX_CLIENTS * sizeof(struct epoll_event));
-    if (events == NULL) {
-        perror("Events malloc error");
-        exit(EXIT_FAILURE);
-    }
-
-    struct request_info *requests = calloc(MAX_CLIENTS, sizeof(struct request_info));
-    if (requests == NULL) {
-        perror("Requests calloc error");
+        perror("Epoll control failed");
         exit(EXIT_FAILURE);
     }
 
     while (1) {
-        int num_ready = epoll_wait(epoll_fd, events, MAX_CLIENTS, -1);
-        if (num_ready == -1) {
-            perror("Epoll wait error");
+        int num_ready_fds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+        if (num_ready_fds == -1) {
+            perror("Epoll wait failed");
             exit(EXIT_FAILURE);
         }
 
-        for (int i = 0; i < num_ready; ++i) {
+        for (int i = 0; i < num_ready_fds; ++i) {
             if (events[i].data.fd == server_fd) {
-                handle_new_clients(epoll_fd, server_fd, events, requests);
+                struct sockaddr_in client_addr;
+                socklen_t client_len = sizeof(client_addr);
+                int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+                if (client_fd == -1) {
+                    perror("Accept failed");
+                    continue;
+                }
+
+                event.events = EPOLLIN | EPOLLET;
+                event.data.fd = client_fd;
+                if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
+                    perror("Epoll control for client_fd failed");
+                    exit(EXIT_FAILURE);
+                }
             } else {
                 handle_client(events[i].data.fd);
+                close(events[i].data.fd);
             }
         }
     }
 
-    free(events);
-    free(requests);
+    // Cleanup code
     close(server_fd);
-    close(epoll_fd);
     return 0;
 }
 
-// TODO: Modify this function as needed
 void handle_client(int client_fd) {
     char buffer[MAX_BUFFER_SIZE]; // Adjust buffer size as needed
     char method[16], hostname[64], port[8], path[64];
@@ -213,43 +207,6 @@ void handle_client(int client_fd) {
 
     // Close the client socket
     close(client_fd);
-}
-
-// TODO: Implement this function
-void handle_new_clients(int epoll_fd, int server_fd, struct epoll_event *events, struct request_info *requests) {
-    // Accept new connections and add them to the epoll instance
-    struct sockaddr_in client_addr;
-    socklen_t client_addr_len = sizeof(client_addr);
-    int client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
-    if (client_fd < 0) {
-        perror("Accept error");
-        return;
-    }
-
-    // Add the new client to the epoll instance
-    struct epoll_event event;
-    event.events = EPOLLIN;
-    event.data.fd = client_fd;
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &event) == -1) {
-        perror("Epoll add error");
-        close(client_fd);
-        return;
-    }
-
-    // Add the new client to the requests array
-    int i;
-    for (i = 0; i < MAX_EVENTS; i++) {
-        if (requests[i].client_fd == -1) {
-            requests[i].client_fd = client_fd;
-            break;
-        }
-    }
-
-    if (i == MAX_EVENTS) {
-        fprintf(stderr, "Too many requests\n");
-        close(client_fd);
-        return;
-    }
 }
 
 int parse_request(char *request, char *method, char *hostname, char *port, char *path) {
