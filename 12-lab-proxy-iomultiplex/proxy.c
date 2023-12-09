@@ -10,22 +10,16 @@
 #include <fcntl.h>
 
 #define MAX_EVENTS 10
+#define MAX_CLIENTS 100
 #define MAX_BUFFER_SIZE 1024
 #define BUFFER_SIZE 5
 
 struct request_info {
-    int client_fd;
-    int server_fd;
-    int state;
-    char buffer[MAX_BUFFER_SIZE];
-    ssize_t total_bytes_client_read;
-    ssize_t total_bytes_server_write;
+    int client_fds[MAX_CLIENTS];  // Array to store multiple client file descriptors
+    int server_fds[MAX_CLIENTS];  // Array to store multiple server file descriptors
+    int client_count;
+    // Add other necessary information to manage multiple requests
 };
-
-#define READ_REQUEST 1
-#define SEND_REQUEST 2
-#define READ_RESPONSE 3
-#define SEND_RESPONSE 4
 
 static const char *user_agent_hdr = "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0";
 
