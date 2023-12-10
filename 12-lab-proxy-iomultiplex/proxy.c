@@ -11,7 +11,7 @@
 
 #define MAX_EVENTS 10
 #define MAX_CLIENTS 100
-#define MAX_BUFFER_SIZE 1024
+#define MAX_BUFFER_SIZE 102400
 #define BUFFER_SIZE 5
 
 enum RequestState {
