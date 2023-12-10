@@ -9,10 +9,10 @@
 #include <sys/epoll.h>
 #include <fcntl.h>
 
-#define MAX_EVENTS 10
+#define MAX_EVENTS 100
 #define MAX_CLIENTS 100
 #define MAX_BUFFER_SIZE 102400
-#define BUFFER_SIZE 5
+#define BUFFER_SIZE 102400
 
 struct request_info {
     int client_fds[MAX_CLIENTS];  // Array to store multiple client file descriptors
